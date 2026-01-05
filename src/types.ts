@@ -1,5 +1,5 @@
 // GitHub App Manifest Template
-interface GitHubAppManifest {
+export interface GitHubAppManifest {
   name: string;
   url: string;
   hook_attributes: {
@@ -19,7 +19,7 @@ interface GitHubAppManifest {
 }
 
 // GitHub App Data Response
-interface GitHubAppData {
+export interface GitHubAppData {
   id: number;
   name: string;
   html_url: string;
@@ -31,14 +31,14 @@ interface GitHubAppData {
 }
 
 // Storage Interfaces for Phase 2
-interface Repository {
+export interface Repository {
   id: number;
   name: string;
   full_name: string;
   private: boolean;
 }
 
-interface GitHubAppConfig {
+export interface GitHubAppConfig {
   appId: string;
   privateKey: string; // encrypted
   webhookSecret: string; // encrypted
@@ -62,4 +62,11 @@ interface GitHubAppConfig {
   // Claude Code integration
   anthropicApiKey?: string; // encrypted
   claudeSetupAt?: string;
+}
+
+// Environment bindings
+export interface Env {
+  MY_CONTAINER: DurableObjectNamespace<any>;
+  GITHUB_APP_CONFIG: DurableObjectNamespace<any>;
+  DASHBOARD_ASSETS?: Fetcher;
 }

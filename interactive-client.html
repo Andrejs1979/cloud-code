@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Code Interactive Mode</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      line-height: 1.6;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      color: #58a6ff;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    h1 svg {
+      width: 32px;
+      height: 32px;
+    }
+
+    .subtitle {
+      color: #8b949e;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .card h2 {
+      font-size: 16px;
+      margin-bottom: 15px;
+      color: #c9d1d9;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+      color: #8b949e;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      padding: 10px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-size: 14px;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: #58a6ff;
+    }
+
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    .row {
+      display: flex;
+      gap: 15px;
+    }
+
+    .col {
+      flex: 1;
+    }
+
+    button {
+      background: #238636;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #2ea043;
+    }
+
+    button:disabled {
+      background: #30363d;
+      cursor: not-allowed;
+    }
+
+    button.secondary {
+      background: #30363d;
+    }
+
+    button.secondary:hover {
+      background: #3c444d;
+    }
+
+    #output {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 20px;
+      min-height: 300px;
+      max-height: 600px;
+      overflow-y: auto;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .event {
+      margin-bottom: 10px;
+      padding: 10px;
+      border-radius: 4px;
+    }
+
+    .event.status {
+      color: #58a6ff;
+      background: rgba(88, 166, 255, 0.1);
+    }
+
+    .event.claude {
+      color: #c9d1d9;
+    }
+
+    .event.input-request {
+      color: #d29922;
+      background: rgba(210, 153, 34, 0.1);
+      border-left: 3px solid #d29922;
+    }
+
+    .event.file-change {
+      color: #3fb950;
+      background: rgba(63, 185, 80, 0.1);
+    }
+
+    .event.error {
+      color: #f85149;
+      background: rgba(248, 81, 73, 0.1);
+    }
+
+    .event.complete {
+      color: #3fb950;
+      font-weight: 600;
+    }
+
+    .timestamp {
+      color: #8b949e;
+      font-size: 12px;
+      margin-right: 8px;
+    }
+
+    .status-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      background: #30363d;
+    }
+
+    .status-indicator.connected {
+      background: rgba(63, 185, 80, 0.2);
+      color: #3fb950;
+    }
+
+    .status-indicator.disconnected {
+      background: rgba(248, 81, 73, 0.2);
+      color: #f85149;
+    }
+
+    .status-indicator.processing {
+      background: rgba(210, 153, 34, 0.2);
+      color: #d29922;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .dot.blink {
+      animation: blink 1s infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .config-toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .config-toggle input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15c0 1.65-1.35 3-3 3s-3-1.35-3-3c0-1.5.45-2.1 1.17-2.83l-.9-.92C10.05 9.55 9 11.15 9 13c0 2.76 2.24 5 5 5 1.85 0 3.45-1.05 4.07-2.17z"/>
+      </svg>
+      Claude Code Interactive Mode
+    </h1>
+    <p class="subtitle">Real-time streaming Claude Code sessions in your browser</p>
+
+    <div class="header-bar">
+      <div class="status-indicator" id="status">
+        <span class="dot"></span>
+        <span id="statusText">Disconnected</span>
+      </div>
+      <button class="secondary" id="clearBtn">Clear Output</button>
+    </div>
+
+    <div class="card">
+      <h2>🚀 Start a New Session</h2>
+
+      <div class="form-group">
+        <label for="prompt">What would you like Claude to do?</label>
+        <textarea id="prompt" placeholder="e.g., Analyze this repository for security issues or Add error handling to the auth module"></textarea>
+      </div>
+
+      <div class="row">
+        <div class="col">
+          <div class="form-group">
+            <label for="repo">Repository (optional)</label>
+            <input type="text" id="repo" placeholder="owner/repo">
+          </div>
+        </div>
+        <div class="col">
+          <div class="form-group">
+            <label for="branch">Branch (optional)</label>
+            <input type="text" id="branch" placeholder="main">
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="config-toggle">
+          <input type="checkbox" id="createPR">
+          Create Pull Request on completion
+        </label>
+      </div>
+
+      <button id="startBtn">Start Interactive Session</button>
+    </div>
+
+    <div class="card">
+      <h2>📡 Session Output</h2>
+      <div id="output"></div>
+    </div>
+  </div>
+
+  <script>
+    const WORKER_URL = window.location.origin;
+    const output = document.getElementById('output');
+    const startBtn = document.getElementById('startBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const statusIndicator = document.getElementById('status');
+    const statusText = document.getElementById('statusText');
+
+    let eventSource = null;
+
+    function setStatus(status) {
+      statusIndicator.className = 'status-indicator ' + status;
+      const dot = statusIndicator.querySelector('.dot');
+
+      if (status === 'processing') {
+        dot.classList.add('blink');
+        statusText.textContent = 'Processing...';
+      } else if (status === 'connected') {
+        dot.classList.add('blink');
+        statusText.textContent = 'Connected';
+      } else if (status === 'disconnected') {
+        dot.classList.remove('blink');
+        statusText.textContent = 'Disconnected';
+      }
+    }
+
+    function addEvent(type, data, timestamp) {
+      const event = document.createElement('div');
+      event.className = 'event ' + type;
+
+      const time = new Date(timestamp).toLocaleTimeString();
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'timestamp';
+      timeSpan.textContent = `[${time}] `;
+
+      if (type === 'status') {
+        event.textContent = `ℹ️  ${data.message}`;
+      } else if (type === 'claude_start') {
+        event.textContent = `\n🔄 Turn ${data.turn}: ${data.prompt.substring(0, 60)}...`;
+      } else if (type === 'claude_delta') {
+        event.textContent = data.content;
+        event.className = 'event claude';
+      } else if (type === 'claude_end') {
+        event.textContent = `✓ Turn ${data.turn} completed`;
+      } else if (type === 'input_request') {
+        event.textContent = `❓ Claude asks: ${data.prompt}`;
+      } else if (type === 'file_change') {
+        event.textContent = `📝 ${data.message}`;
+      } else if (type === 'complete') {
+        event.textContent = `✅ Session complete (${data.turns} turns)`;
+        event.className = 'event complete';
+      } else if (type === 'error') {
+        event.textContent = `❌ Error: ${data.message}`;
+        event.className = 'event error';
+      } else {
+        event.textContent = JSON.stringify(data);
+      }
+
+      event.insertBefore(timeSpan, event.firstChild);
+      output.appendChild(event);
+      output.scrollTop = output.scrollHeight;
+    }
+
+    async function startSession() {
+      const prompt = document.getElementById('prompt').value.trim();
+      const repo = document.getElementById('repo').value.trim();
+      const branch = document.getElementById('branch').value.trim();
+      const createPR = document.getElementById('createPR').checked;
+
+      if (!prompt) {
+        alert('Please enter a prompt for Claude');
+        return;
+      }
+
+      // Build request body
+      const body = {
+        prompt,
+        options: {
+          maxTurns: 10,
+          permissionMode: 'bypassPermissions',
+          createPR
+        }
+      };
+
+      if (repo) {
+        const [owner, name] = repo.split('/');
+        body.repository = {
+          url: `https://github.com/${repo}`,
+          name: `${owner}/${name}`,
+          branch: branch || 'main'
+        };
+      }
+
+      startBtn.disabled = true;
+      setStatus('processing');
+
+      try {
+        // Start the session - this returns an SSE stream
+        const response = await fetch(`${WORKER_URL}/interactive/start`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to start session: ${await response.text()}`);
+        }
+
+        setStatus('connected');
+
+        // Read the SSE stream
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              // Event type line
+              continue;
+            }
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+            const type = data.type || 'unknown';
+            addEvent(type, data, data.timestamp || Date.now());
+              } catch (e) {
+                // Not JSON, just display
+                output.textContent += line.slice(6) + '\n';
+              }
+            }
+          }
+        }
+
+        setStatus('disconnected');
+
+      } catch (error) {
+        console.error('Error:', error);
+        addEvent('error', { message: error.message }, Date.now());
+        setStatus('disconnected');
+      } finally {
+        startBtn.disabled = false;
+      }
+    }
+
+    startBtn.addEventListener('click', startSession);
+
+    clearBtn.addEventListener('click', () => {
+      output.textContent = '';
+    });
+
+    // Handle page unload
+    window.addEventListener('beforeunload', () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+    });
+  </script>
+</body>
+</html>

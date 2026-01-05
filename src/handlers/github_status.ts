@@ -1,3 +1,5 @@
+import type { GitHubAppConfig } from "../types";
+
 export async function handleGitHubStatus(_request: Request, env: any): Promise<Response> {
   const url = new URL(_request.url);
   const appId = url.searchParams.get('app_id');

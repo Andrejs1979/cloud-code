@@ -6,7 +6,29 @@ import { handleClaudeSetup } from './handlers/claude_setup';
 import { handleGitHubSetup } from './handlers/github_setup';
 import { handleGitHubStatus } from './handlers/github_status';
 import { handleGitHubWebhook } from './handlers/github_webhook';
+import { handleInteractiveRequest } from './handlers/interactive';
+import { handleDashboardAPI, serveDashboard } from './handlers/dashboard';
 import { logWithContext } from './log';
+import type { GitHubAppConfig, Repository, Env } from './types';
+
+/**
+ * Rewrites a request with a new pathname while preserving other properties
+ */
+function rewriteRequestPath(request: Request, newPathname: string): Request {
+  const url = new URL(request.url);
+  url.pathname = newPathname;
+
+  // Preserve the body if it exists (needed for POST requests)
+  const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body;
+
+  return new Request(url.toString(), {
+    method: request.method,
+    headers: request.headers,
+    body,
+    // @ts-expect-error - cf property is not in standard Request type
+    cf: request.cf
+  });
+}
 
 export class GitHubAppConfigDO {
   private storage: DurableObjectStorage;
@@ -562,10 +584,13 @@ export class MyContainer extends Container {
   sleepAfter = '45s'; // Extended timeout for Claude Code processing
   envVars: Record<string, string> = {
     MESSAGE: 'I was passed in via the container class!',
+    // Custom Claude API configuration
+    ANTHROPIC_AUTH_TOKEN: 'cb3aff925b944bb0a644d2bf999e403f.mtilqno57rHf2oEb',
+    ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic',
   };
 
   // Override fetch to handle environment variable setting for specific requests
-  override async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
     logWithContext('CONTAINER', 'Container request received', {
@@ -639,18 +664,18 @@ export class MyContainer extends Container {
     return super.fetch(request);
   }
 
-  override onStart() {
+  onStart() {
     logWithContext('CONTAINER_LIFECYCLE', 'Container started successfully', {
       port: this.defaultPort,
       sleepAfter: this.sleepAfter
     });
   }
 
-  override onStop() {
+  onStop() {
     logWithContext('CONTAINER_LIFECYCLE', 'Container shut down successfully');
   }
 
-  override onError(error: unknown) {
+  onError(error: unknown) {
     logWithContext('CONTAINER_LIFECYCLE', 'Container error occurred', {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined
@@ -661,7 +686,7 @@ export class MyContainer extends Container {
 export default {
   async fetch(
     request: Request,
-    env: { MY_CONTAINER: DurableObjectNamespace<Container<unknown>> }
+    env: Env
   ): Promise<Response> {
     const startTime = Date.now();
     const url = new URL(request.url);
@@ -723,9 +748,21 @@ export default {
         routeMatched = true;
         let id = env.MY_CONTAINER.idFromName('container');
         let container = env.MY_CONTAINER.get(id);
-        response = await containerFetch(container, request, {
+
+        // Map /container/* to container's internal routes
+        let containerPath = '/';
+        if (pathname === '/container' || pathname === '/container/') {
+          containerPath = '/container';
+        } else if (pathname.startsWith('/container/process-issue')) {
+          containerPath = '/process-issue';
+        } else if (pathname.startsWith('/container/interactive-session')) {
+          containerPath = '/interactive-session';
+        }
+
+        const rewrittenRequest = rewriteRequestPath(request, containerPath);
+        response = await containerFetch(container, rewrittenRequest, {
           containerName: 'container',
-          route: getRouteFromRequest(request)
+          route: containerPath
         });
       }
 
@@ -744,9 +781,12 @@ export default {
         logWithContext('MAIN_HANDLER', 'Routing to load balanced containers');
         routeMatched = true;
         let container = await loadBalance(env.MY_CONTAINER, 3);
-        response = await containerFetch(container, request, {
+
+        // Map /lb to container's health endpoint
+        const rewrittenRequest = rewriteRequestPath(request, '/container');
+        response = await containerFetch(container, rewrittenRequest, {
           containerName: 'load-balanced',
-          route: getRouteFromRequest(request)
+          route: '/container'
         });
       }
 
@@ -754,10 +794,34 @@ export default {
         logWithContext('MAIN_HANDLER', 'Routing to singleton container');
         routeMatched = true;
         const container: DurableObjectStub<Container<unknown>> = getContainer(env.MY_CONTAINER);
-        response = await containerFetch(container, request, {
+
+        // Map /singleton to container's health endpoint
+        const rewrittenRequest = rewriteRequestPath(request, '/container');
+        response = await containerFetch(container, rewrittenRequest, {
           containerName: 'singleton',
-          route: getRouteFromRequest(request)
+          route: '/container'
         });
+      }
+
+      // Interactive mode endpoints
+      else if (pathname.startsWith('/interactive/')) {
+        logWithContext('MAIN_HANDLER', 'Routing to interactive mode handler');
+        routeMatched = true;
+        response = await handleInteractiveRequest(request, env);
+      }
+
+      // Dashboard static files
+      else if (pathname.startsWith('/dashboard/')) {
+        logWithContext('MAIN_HANDLER', 'Routing to dashboard static files');
+        routeMatched = true;
+        response = await serveDashboard(request, env);
+      }
+
+      // Dashboard API endpoints
+      else if (pathname.startsWith('/api/')) {
+        logWithContext('MAIN_HANDLER', 'Routing to dashboard API');
+        routeMatched = true;
+        response = await handleDashboardAPI(request, env);
       }
 
       // Default home page
@@ -776,6 +840,11 @@ Container Testing Routes:
 - /lb - Load balancing over multiple containers
 - /error - Test error handling
 - /singleton - Single container instance
+
+Interactive Mode:
+- POST /interactive/start - Start an interactive Claude Code session
+- GET /interactive/status?sessionId={id} - Check session status
+- DELETE /interactive/{sessionId} - End a session
 
 Once both setups are complete, create GitHub issues to trigger automatic Claude Code processing!
         `);

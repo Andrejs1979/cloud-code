@@ -12,6 +12,14 @@ npm run cf-typegen   # Generate TypeScript types after wrangler config changes
 
 **⚠️ Important:** Always run `npm run cf-typegen` after making changes to `wrangler.jsonc`. This regenerates the TypeScript types and updates `worker-configuration.d.ts` to match your bindings and configuration.
 
+### Container Development Commands
+
+```bash
+cd container_src
+npm run build        # Compile TypeScript to dist/
+npm run watch        # Watch mode for TypeScript compilation
+```
+
 ### Wrangler CLI Commands
 
 ```bash
@@ -22,140 +30,227 @@ npx wrangler login                  # Authenticate with Cloudflare
 npx wrangler versions upload        # Upload new version with preview URL
 ```
 
-## Tech Stack & Architecture
+## Architecture Overview
 
-This is a **Cloudflare Workers Container project** that integrates **Claude Code** with **GitHub** for automated issue processing. It combines:
-- **TypeScript Worker** (`src/index.ts`) - Main request router and GitHub integration
-- **Node.js Container** (`container_src/src/main.ts`) - Containerized Claude Code environment running on port 8080
-- **Durable Objects** - Two DO classes: `GitHubAppConfigDO` for encrypted credential storage and `MyContainer` for container management
+This is a **Cloudflare Workers Container project** that integrates **Claude Code** with **GitHub** for automated issue processing. The architecture has two main components:
 
-### Key Architecture Points
+### Worker Layer (`src/`)
+TypeScript Cloudflare Worker that handles HTTP routing and GitHub webhook processing. Key components:
 
-**Request Flow:**
-1. Worker receives requests and routes based on path
-2. GitHub webhooks trigger issue processing in Claude Code containers
-3. Container routes (`/container`, `/lb`, `/singleton`, `/error`) for testing and load balancing
-4. Setup routes (`/claude-setup`, `/gh-setup/*`) handle API key configuration and GitHub app OAuth
+- **`src/index.ts`** - Main entry point with two Durable Object classes:
+  - `GitHubAppConfigDO` - Stores encrypted credentials (GitHub app config, Claude API key, installation tokens) using SQLite storage
+  - `MyContainer` - Extends `@cloudflare/containers` `Container` class, manages container lifecycle
 
-**Container Management:**
-- Extends `cf-containers` library's `Container` class
-- Default port 8080, 45-second sleep timeout
-- Lifecycle hooks: `onStart()`, `onStop()`, `onError()`
-- Load balancing support across multiple container instances
-- Contains Claude Code SDK (`@anthropic-ai/claude-code`) and GitHub API client (`@octokit/rest`)
+- **Request Router** routes paths to handlers:
+  - `/claude-setup` - Claude API key configuration
+  - `/gh-setup` - GitHub app OAuth flow initiation
+  - `/gh-setup/callback` - OAuth callback handler
+  - `/gh-status` - Configuration status endpoint
+  - `/webhooks/github` - GitHub webhook receiver
+  - `/interactive/*` - Interactive mode endpoints (see below)
+  - `/container/*`, `/lb/*`, `/singleton/*`, `/error/*` - Container testing routes
 
-**GitHub Integration:**
-- Uses GitHub App Manifests for one-click app creation
-- Each deployment gets isolated GitHub app with dynamic webhook URLs
-- OAuth flow: `/gh-setup` → GitHub → `/gh-setup/callback` → `/gh-setup/install`
-- Webhook processing: `/webhooks/github` handles push, pull_request, issues, installation events
-- Encrypted credential storage using AES-256-GCM in Durable Objects
+- **Handlers** (`src/handlers/`):
+  - `github_webhook.ts` - Signature verification and event routing
+  - `github_webhooks/issues.ts` - Issue event processing, routes to Claude containers
+  - `github_webhooks/installation.ts` - Installation events
+  - `github_webhooks/installation_change.ts` - Repository added/removed events
+  - `github_setup.ts` - GitHub app manifest generation
+  - `oauth_callback.ts` - OAuth flow completion
+  - `claude_setup.ts` - Claude API key encryption and storage
+  - `interactive.ts` - Interactive mode session management
+
+- **Utilities**:
+  - `crypto.ts` - AES-256-GCM encryption/decryption, JWT generation for GitHub App auth
+  - `github_client.ts` - GitHub API wrapper using installation tokens
+  - `fetch.ts` - Container communication helpers (`containerFetch`, `loadBalance`, `getRouteFromRequest`)
+  - `log.ts` - Structured logging with context (`logWithContext`)
+  - `types.ts` - TypeScript interfaces for GitHub webhooks and configuration
+
+### Container Layer (`container_src/`)
+Node.js server running in a Cloudflare Container, processes GitHub issues using Claude Code SDK:
+
+- **`container_src/src/main.ts`** - HTTP server on port 8080:
+  - `GET /` or `/container` - Health check endpoint
+  - `POST /process-issue` - Main issue processing handler
+  - `GET /error` - Error testing endpoint
+
+- **Issue Processing Flow**:
+  1. Receives issue context via environment variables or request body
+  2. Clones repository to `/tmp/workspace/issue-{number}` using authenticated git
+  3. Changes to workspace directory and invokes `@anthropic-ai/claude-code` `query()`
+  4. Detects git changes using `simple-git`
+  5. Creates feature branch, commits changes, pushes to remote
+  6. Creates pull request via `ContainerGitHubClient` (or posts comment if PR creation fails)
+
+- **`container_src/src/github_client.ts`** - GitHub API client using `@octokit/rest` for PRs and comments
+
+## GitHub Integration Architecture
+
+**GitHub App Manifest Flow** (one-click installation):
+1. User visits `/gh-setup` → generates dynamic manifest URL
+2. User installs app → GitHub redirects to `/gh-setup/callback` with `code`
+3. Worker exchanges `code` for app config (app_id, private_key, webhook_secret)
+4. Credentials are encrypted with AES-256-GCM before storage in Durable Object
+5. User is redirected to `/gh-setup/install` for repository selection
+
+**Webhook Processing Flow**:
+1. GitHub sends webhook to `/webhooks/github`
+2. Signature verified using stored `webhook_secret`
+3. Routed to event handler (issues, installation, etc.)
+4. For new issues: posts acknowledgment comment, spawns container with credentials
+5. Container clones repo, runs Claude Code, creates PR
+
+**Authentication Chain**:
+```
+GitHub App (JWT) → Installation Token → API Calls
+```
+- App JWT generated from `app_id` + `private_key` (RS256, 10min expiry)
+- JWT exchanged for installation token (cached for 5min in SQLite)
+- Installation token used for authenticated GitHub API calls
 
 ## Configuration Files
 
-- **`wrangler.jsonc`** - Workers configuration with container bindings and Durable Objects
-- **`Dockerfile`** - Multi-stage build with Node.js, Python, Git, and Claude Code CLI
-- **`worker-configuration.d.ts`** - Auto-generated types (run `npm run cf-typegen` after config changes)
-- **`.dev.vars`** - Local environment variables (not committed to git)
-- **`container_src/package.json`** - Container dependencies including Claude Code SDK
+- **`wrangler.jsonc`** - Workers configuration with containers and Durable Objects bindings
+- **`Dockerfile`** - Multi-stage Node.js 22 image with Claude Code CLI globally installed
+- **`worker-configuration.d.ts`** - Auto-generated types from wrangler config
+- **`.dev.vars`** - Local environment variables (git-ignored)
 
-### Key Wrangler Configuration Patterns
+### Key Wrangler Patterns
 
 ```jsonc
 {
-  "compatibility_date": "2025-05-23",  // Controls API behavior and features
-  "nodejs_compat": true,               // Enable Node.js API compatibility
-  "vars": {                           // Environment variables
-    "ENVIRONMENT": "development"
-  },
-  "durable_objects": {                // Durable Object bindings
+  "compatibility_date": "2025-05-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "containers": [{
+    "class_name": "MyContainer",
+    "image": "./Dockerfile",
+    "max_instances": 10
+  }],
+  "durable_objects": {
     "bindings": [
       { "name": "MY_CONTAINER", "class_name": "MyContainer" },
       { "name": "GITHUB_APP_CONFIG", "class_name": "GitHubAppConfigDO" }
     ]
-  }
-}
-```
-
-**After modifying bindings or vars in wrangler.jsonc:**
-1. Run `npm run cf-typegen` to update TypeScript types
-2. Check that `worker-configuration.d.ts` reflects your changes
-3. Update your `Env` interface in TypeScript code if needed
-
-## Development Patterns
-
-**Key Endpoints:**
-- `/claude-setup` - Configure Claude API key
-- `/gh-setup` - GitHub app creation and setup
-- `/gh-status` - Check configuration status
-- `/webhooks/github` - GitHub webhook processor
-- `/container/*` - Basic container functionality
-- `/lb/*` - Load balancing across 3 containers
-- `/singleton/*` - Single container instance
-- `/error/*` - Test container error handling
-
-**Environment Variables:**
-- Container receives issue context and GitHub credentials from Worker
-- Configure base environment in `wrangler.jsonc` vars section
-- Sensitive data (API keys, tokens) stored encrypted in Durable Objects
-
-## Cloudflare Workers Best Practices
-
-### Worker Code Structure
-```typescript
-export interface Env {
-  MY_CONTAINER: DurableObjectNamespace;
-  GITHUB_APP_CONFIG: DurableObjectNamespace;
-  // Add other bindings here
-  ENVIRONMENT?: string;
-}
-
-export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    // Worker logic here
-    return new Response("Hello World");
   },
-} satisfies ExportedHandler<Env>;
+  "migrations": [
+    { "new_sqlite_classes": ["MyContainer"], "tag": "v1" },
+    { "new_sqlite_classes": ["GitHubAppConfigDO"], "tag": "v2" }
+  ]
+}
 ```
 
-### Resource Bindings
-- **Durable Objects**: Access via `env.MY_CONTAINER.get(id)`
-- **Environment Variables**: Access via `env.VARIABLE_NAME`
-- **KV/D1/R2**: Configure in wrangler.jsonc, access via env bindings
+## Container Communication Pattern
 
-### Development Tips
-- Use `console.log()` for debugging - visible in `wrangler dev` and deployed logs
-- Workers must start within 400ms - keep imports and initialization lightweight
-- Use `.dev.vars` for local secrets (never commit this file)
-- Test with `--remote` flag to use actual Cloudflare resources during development
+Containers communicate via HTTP requests to internal DO endpoints:
 
-## Current Implementation Status
+```typescript
+// Get or create container by name
+const id = env.MY_CONTAINER.idFromName('container-name');
+const container = env.MY_CONTAINER.get(id);
 
-**✅ Completed:**
-- GitHub App Manifest setup and OAuth flow
-- Secure credential storage in Durable Objects with AES-256-GCM encryption
-- Basic webhook processing infrastructure with signature verification
-- Container enhancement with Claude Code SDK and GitHub API integration
-- Issue detection and routing to Claude Code containers
+// Send request to container
+const response = await containerFetch(container, request, {
+  containerName: 'container-name',
+  route: '/process-issue'
+});
+```
 
-**🔧 In Progress:**
-- End-to-end issue processing with Claude Code analysis and solutions
-- Pull request creation from Claude's code modifications
-- Enhanced error handling and progress monitoring
+**MyContainer.fetch()** override:
+- Intercepts `/process-issue` requests to set environment variables dynamically
+- Passes issue context (ANTHROPIC_API_KEY, GITHUB_TOKEN, ISSUE_NUMBER, etc.) to container
 
-**Important:** Containers are a Beta feature - API may change. The `cf-containers` library version is pinned to 0.0.7.
+## Data Storage (SQLite in Durable Objects)
 
-## Project Architecture Summary
+**GitHubAppConfigDO** maintains three tables:
 
-This project creates an automated GitHub issue processor powered by Claude Code:
+1. `github_app_config` - App credentials and repository list
+2. `installation_tokens` - Cached installation tokens with expiry
+3. `claude_config` - Encrypted Anthropic API key
 
-1. **Setup Phase**: Configure Claude API key and GitHub app via web interface
-2. **Issue Processing**: GitHub webhooks trigger containerized Claude Code analysis
-3. **Solution Implementation**: Claude Code analyzes repositories and implements solutions
-4. **Result Delivery**: Solutions are delivered as GitHub comments or pull requests
+All sensitive data encrypted with AES-256-GCM before storage.
 
-**Key Integration Points:**
-- `src/handlers/github_webhook.ts` - Main webhook entry point
-- `src/handlers/github_webhooks/issues.ts` - Issue-specific processing
-- `container_src/src/main.ts` - Claude Code execution environment
-- Durable Objects for persistent, encrypted storage of credentials and state
+## Interactive Mode
+
+The system supports **real-time interactive sessions** with Claude Code, enabling streaming output and bidirectional communication.
+
+### Interactive Mode Endpoints
+
+- **`POST /interactive/start`** - Start a new interactive session
+  - Returns SSE stream of Claude's output in real-time
+  - Request body: `{ prompt, repository?, options? }`
+
+- **`GET /interactive/status?sessionId={id}`** - Check session status
+- **`DELETE /interactive/{sessionId}`** - End an active session
+
+### Starting an Interactive Session
+
+```bash
+curl -N -X POST https://your-worker.workers.dev/interactive/start \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Analyze this repository for security issues",
+    "repository": {
+      "url": "https://github.com/owner/repo",
+      "name": "owner/repo",
+      "branch": "main"
+    },
+    "options": {
+      "maxTurns": 10,
+      "permissionMode": "bypassPermissions",
+      "createPR": false
+    }
+  }'
+```
+
+### SSE Event Types
+
+| Event | Description |
+|-------|-------------|
+| `connected` | Connection established |
+| `status` | Status updates (cloning repo, starting Claude, etc.) |
+| `claude_start` | Beginning of a Claude turn |
+| `claude_delta` | Streaming output from Claude |
+| `claude_end` | End of a Claude turn |
+| `input_request` | Claude is asking for user input |
+| `file_change` | File changes detected |
+| `complete` | Session completed successfully |
+| `error` | Error occurred |
+
+### Test Clients
+
+- **HTML Client**: Open `interactive-client.html` in a browser
+- **Node.js Client**: `node test-client.js --prompt "Analyze code" --repo "owner/repo"`
+
+### Container Interactive Handler
+
+The container (`container_src/src/interactive_session.ts`) handles interactive sessions:
+
+```typescript
+// Endpoint: POST /interactive-session
+// Headers: X-Session-Id: {sessionId}
+// Body: { sessionId, prompt, repository?, anthropicApiKey, githubToken?, options? }
+
+// Streams SSE events with Claude's output in real-time
+// Supports detecting when Claude asks for input
+```
+
+## Environment Variables
+
+**Worker-level** (set in `wrangler.jsonc` or `.dev.vars`):
+- None required; all secrets stored encrypted in DO
+
+**Container-level** (passed dynamically by Worker):
+- `ANTHROPIC_API_KEY` - Claude API key
+- `GITHUB_TOKEN` - Installation token for API access
+- `ISSUE_ID`, `ISSUE_NUMBER`, `ISSUE_TITLE`, `ISSUE_BODY`, `ISSUE_LABELS`
+- `REPOSITORY_URL`, `REPOSITORY_NAME`
+- `ISSUE_AUTHOR`
+
+## Important Notes
+
+- **Containers are Beta** - `@cloudflare/containers` version pinned to 0.0.8
+- **Encryption key** - Currently static; should use proper key management in production
+- **Container sleep timeout** - 45 seconds (`sleepAfter = '45s'`)
+- **Default branch** - Container assumes repository default branch for PR creation
+- **Workspace cleanup** - Temporary workspaces in `/tmp/workspace/` persist for container lifetime

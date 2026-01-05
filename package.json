@@ -12,11 +12,12 @@
 	"devDependencies": {
 		"@types/node": "^24.0.3",
 		"typescript": "^5.5.2",
-		"wrangler": "^4.20.5"
+		"wrangler": "^4.54.0"
 	},
 	"dependencies": {
 		"@cloudflare/containers": "0.0.8",
-		"@tsndr/cloudflare-worker-jwt": "^3.2.0"
+		"@tsndr/cloudflare-worker-jwt": "^3.2.0",
+		"playwright": "^1.57.0"
 	},
 	"cloudflare": {
 		"label": "Containers Starter",

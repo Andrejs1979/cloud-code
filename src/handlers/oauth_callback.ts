@@ -1,5 +1,6 @@
 import { encrypt } from "../crypto";
 import { logWithContext } from "../log";
+import type { GitHubAppData, GitHubAppConfig } from "../types";
 
 export async function handleOAuthCallback(_request: Request, url: URL, env: any): Promise<Response> {
   logWithContext('OAUTH_CALLBACK', 'Handling OAuth callback', {

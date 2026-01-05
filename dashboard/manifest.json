@@ -1,0 +1,54 @@
+{
+  "name": "Claude Code Pipeline",
+  "short_name": "Claude Pipeline",
+  "description": "Manage AI-powered coding pipeline and interact with Claude Code",
+  "start_url": "/dashboard/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "orientation": "portrait-primary",
+  "scope": "/dashboard/",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2358a6ff'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15c0 1.65-1.35 3-3 3s-3-1.35-3-3c0-1.5.45-2.1 1.17-2.83l-.9-.92C10.05 9.55 9 11.15 9 13c0 2.76 2.24 5 5 5 1.85 0 3.45-1.05 4.07-2.17z'/></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2358a6ff'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15c0 1.65-1.35 3-3 3s-3-1.35-3-3c0-1.5.45-2.1 1.17-2.83l-.9-.92C10.05 9.55 9 11.15 9 13c0 2.76 2.24 5 5 5 1.85 0 3.45-1.05 4.07-2.17z'/></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "developer", "utilities"],
+  "shortcuts": [
+    {
+      "name": "New Session",
+      "short_name": "New",
+      "description": "Start a new interactive session",
+      "url": "/dashboard/?action=new",
+      "icons": [
+        {
+          "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'><path d='M12 4v16m8-8H4'/></svg>",
+          "sizes": "96x96",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "Issues",
+      "short_name": "Issues",
+      "description": "View GitHub issues",
+      "url": "/dashboard/?view=issues",
+      "icons": [
+        {
+          "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'><path d='M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2'/></svg>",
+          "sizes": "96x96",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ]
+}

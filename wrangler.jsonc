@@ -3,11 +3,16 @@
 	"name": "claude-code-containers",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-05-23",
+	"account_id": "d9700a3fcc05a01f5d81670ebbae817d",
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
 	"observability": {
 		"enabled": true
+	},
+	"assets": {
+		"directory": "dashboard",
+		"binding": "DASHBOARD_ASSETS"
 	},
 	"containers": [
 		{
@@ -31,16 +36,8 @@
 	},
 	"migrations": [
 		{
-			"new_sqlite_classes": [
-				"MyContainer"
-			],
-			"tag": "v1"
-		},
-		{
-			"new_sqlite_classes": [
-				"GitHubAppConfigDO"
-			],
-			"tag": "v2"
+			"new_sqlite_classes": ["MyContainer"],
+			"tag": "v4-re-add-container"
 		}
 	]
 }

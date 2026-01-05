@@ -1,4 +1,5 @@
 import { logWithContext } from "../log";
+import type { GitHubAppManifest } from "../types";
 
 function generateAppManifest(workerDomain: string): GitHubAppManifest {
   return {

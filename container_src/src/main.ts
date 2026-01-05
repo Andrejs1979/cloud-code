@@ -5,6 +5,7 @@ import simpleGit from 'simple-git';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { ContainerGitHubClient } from './github_client.js';
+import { createInteractiveSessionHandler } from './interactive_session.js';
 
 const PORT = 8080;
 
@@ -84,7 +85,7 @@ async function errorHandler(_req: http.IncomingMessage, _res: http.ServerRespons
 }
 
 // Setup isolated workspace for issue processing using proper git clone
-async function setupWorkspace(repositoryUrl: string, issueNumber: string): Promise<string> {
+export async function setupWorkspace(repositoryUrl: string, issueNumber: string): Promise<string> {
   const workspaceDir = `/tmp/workspace/issue-${issueNumber}`;
 
   logWithContext('WORKSPACE', 'Setting up workspace with git clone', {
@@ -171,7 +172,7 @@ async function setupWorkspace(repositoryUrl: string, issueNumber: string): Promi
 }
 
 // Initialize git workspace for proper developer workflow
-async function initializeGitWorkspace(workspaceDir: string): Promise<void> {
+export async function initializeGitWorkspace(workspaceDir: string): Promise<void> {
   logWithContext('GIT_WORKSPACE', 'Configuring git workspace for development', { workspaceDir });
 
   const git = simpleGit(workspaceDir);
@@ -210,7 +211,7 @@ async function initializeGitWorkspace(workspaceDir: string): Promise<void> {
 }
 
 // Detect if there are any git changes from the default branch
-async function detectGitChanges(workspaceDir: string): Promise<boolean> {
+export async function detectGitChanges(workspaceDir: string): Promise<boolean> {
   logWithContext('GIT_WORKSPACE', 'Detecting git changes', { workspaceDir });
 
   const git = simpleGit(workspaceDir);
@@ -237,7 +238,7 @@ async function detectGitChanges(workspaceDir: string): Promise<boolean> {
 }
 
 // Create feature branch, commit changes, and push to remote
-async function createFeatureBranchCommitAndPush(workspaceDir: string, branchName: string, message: string): Promise<string> {
+export async function createFeatureBranchCommitAndPush(workspaceDir: string, branchName: string, message: string): Promise<string> {
   logWithContext('GIT_WORKSPACE', 'Creating feature branch, committing, and pushing changes', {
     workspaceDir,
     branchName,
@@ -279,7 +280,7 @@ async function createFeatureBranchCommitAndPush(workspaceDir: string, branchName
 }
 
 // Read PR summary from .claude-pr-summary.md file
-async function readPRSummary(workspaceDir: string): Promise<string | null> {
+export async function readPRSummary(workspaceDir: string): Promise<string | null> {
   const summaryPath = path.join(workspaceDir, '.claude-pr-summary.md');
 
   try {
@@ -562,6 +563,12 @@ async function processIssueHandler(req: http.IncomingMessage, res: http.ServerRe
       // Set environment variables from request body if they exist
       if (issueContextFromRequest.ANTHROPIC_API_KEY) {
         process.env.ANTHROPIC_API_KEY = issueContextFromRequest.ANTHROPIC_API_KEY;
+        // Also support ANTHROPIC_AUTH_TOKEN (used by some SDK versions)
+        process.env.ANTHROPIC_AUTH_TOKEN = issueContextFromRequest.ANTHROPIC_API_KEY;
+      }
+      // Set custom base URL for Anthropic API proxy
+      if (!process.env.ANTHROPIC_BASE_URL) {
+        process.env.ANTHROPIC_BASE_URL = 'https://api.z.ai/api/anthropic';
       }
       if (issueContextFromRequest.GITHUB_TOKEN) {
         process.env.GITHUB_TOKEN = issueContextFromRequest.GITHUB_TOKEN;
@@ -605,11 +612,17 @@ async function processIssueHandler(req: http.IncomingMessage, res: http.ServerRe
   }
 
   // Check for API key (now potentially updated from request)
-  if (!process.env.ANTHROPIC_API_KEY) {
+  // Support both ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN
+  if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
     logWithContext('ISSUE_HANDLER', 'Missing Anthropic API key');
     res.writeHead(400, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'ANTHROPIC_API_KEY not provided' }));
     return;
+  }
+
+  // Ensure API key is available for the SDK
+  if (!process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_AUTH_TOKEN) {
+    process.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_AUTH_TOKEN;
   }
 
   if (!process.env.ISSUE_ID || !process.env.REPOSITORY_URL) {
@@ -697,6 +710,10 @@ async function requestHandler(req: http.IncomingMessage, res: http.ServerRespons
     } else if (url === '/process-issue') {
       logWithContext('REQUEST_HANDLER', 'Routing to process issue handler');
       await processIssueHandler(req, res);
+    } else if (url === '/interactive-session') {
+      logWithContext('REQUEST_HANDLER', 'Routing to interactive session handler');
+      const interactiveHandler = createInteractiveSessionHandler();
+      await interactiveHandler(req, res);
     } else {
       logWithContext('REQUEST_HANDLER', 'Route not found', { url });
       res.writeHead(404, { 'Content-Type': 'application/json' });
