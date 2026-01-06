@@ -1063,9 +1063,15 @@ Once both setups are complete, create GitHub issues to trigger automatic Claude 
       // Record metrics
       recordRequest(pathname, response.status, processingTime);
 
-      // Add metrics headers to response
-      response.headers.set('X-Response-Time', `${processingTime}ms`);
-      response.headers.set('X-Request-Count', getRequestCount().toString());
+      // Create new response with metrics headers (container responses have immutable headers)
+      const responseHeaders = new Headers(response.headers);
+      responseHeaders.set('X-Response-Time', `${processingTime}ms`);
+      responseHeaders.set('X-Request-Count', getRequestCount().toString());
+      response = new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders
+      });
 
       logWithContext('MAIN_HANDLER', 'Request completed successfully', {
         pathname,
