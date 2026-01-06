@@ -248,12 +248,23 @@ export async function createFeatureBranchCommitAndPush(workspaceDir: string, bra
   const git = simpleGit(workspaceDir);
 
   try {
+    // Configure git user (required for commits)
+    await git.addConfig('user.name', 'Claude Code Assistant');
+    await git.addConfig('user.email', 'claude-code@anthropic.com');
+
     // Create and checkout new feature branch
     await git.checkoutLocalBranch(branchName);
     logWithContext('GIT_WORKSPACE', 'Feature branch created and checked out', { branchName });
 
     // Add all changes
     await git.add('.');
+
+    // Check if there are actually changes to commit
+    const status = await git.status();
+    if (status.files.length === 0) {
+      logWithContext('GIT_WORKSPACE', 'No changes to commit', { status });
+      throw new Error('No changes detected after git add');
+    }
 
     // Commit changes
     const result = await git.commit(message);
@@ -301,24 +312,13 @@ export async function readPRSummary(workspaceDir: string): Promise<string | null
 // Prepare prompt for Claude Code
 function prepareClaudePrompt(issueContext: IssueContext): string {
   return `
-You are working on GitHub issue #${issueContext.issueNumber}: "${issueContext.title}"
+GitHub issue #${issueContext.issueNumber}: "${issueContext.title}"
 
-Issue Description:
 ${issueContext.description}
 
-Labels: ${issueContext.labels.join(', ')}
-Author: ${issueContext.author}
+Author: ${issueContext.author}${issueContext.labels.length > 0 ? `\nLabels: ${issueContext.labels.join(', ')}` : ''}
 
-The repository has been cloned to your current working directory. Please:
-1. Explore the codebase to understand the structure and relevant files
-2. Analyze the issue requirements thoroughly
-3. Implement a solution that addresses the issue
-4. Write appropriate tests if needed
-5. Ensure code quality and consistency with existing patterns
-
-**IMPORTANT: If you make any file changes, please create a file called '.claude-pr-summary.md' in the root directory with a concise summary (1-3 sentences) of what changes you made and why. This will be used for the pull request description.**
-
-Work step by step and provide clear explanations of your approach.
+Please implement the requested changes directly. After making changes, create a .claude-pr-summary.md file with a brief summary of what you did.
 `;
 }
 
@@ -374,11 +374,12 @@ async function processIssue(issueContext: IssueContext, githubToken: string): Pr
 
         try {
           // Use CLI directly with --print --output-format json
+          // Note: --output-format must come before -p
           const cliOutput = await new Promise<string>((resolve, reject) => {
             const cliProcess = spawn('claude', [
-              '-p', '--print', '--output-format', 'json',
+              '--output-format', 'json', '-p', '--print',
               '--permission-mode', 'acceptEdits',
-              '--max-turns', '5',
+              '--max-turns', '10',
               prompt
             ], {
               stdio: ['ignore', 'pipe', 'pipe'],
@@ -599,11 +600,39 @@ function generatePRBody(prSummary: string | null, _solution: string, issueNumber
 async function processIssueHandler(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   logWithContext('ISSUE_HANDLER', 'Processing issue request');
 
-  // Read request body to get environment variables if they're passed in the request
-  let requestBody = '';
-  for await (const chunk of req) {
-    requestBody += chunk;
-  }
+  // Read request body with timeout to prevent hanging
+  const requestBody = await new Promise<string>((resolve) => {
+    let body = '';
+    let timeout: NodeJS.Timeout | null = null;
+
+    const cleanup = () => {
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
+    };
+
+    timeout = setTimeout(() => {
+      cleanup();
+      logWithContext('ISSUE_HANDLER', 'Body reading timeout, using empty body');
+      resolve(body);
+    }, 10000); // 10 second timeout
+
+    req.on('data', (chunk) => {
+      body += chunk.toString();
+    });
+
+    req.on('end', () => {
+      cleanup();
+      resolve(body);
+    });
+
+    req.on('error', (err) => {
+      cleanup();
+      logWithContext('ISSUE_HANDLER', 'Error reading body', { error: err });
+      resolve(body);
+    });
+  });
 
   let issueContextFromRequest: any = {};
   if (requestBody) {
@@ -891,8 +920,9 @@ async function testClaudeConnection(req: http.IncomingMessage, res: http.ServerR
 
         // Use CLI directly with -p --print for non-interactive execution
         // Note: Can't use bypassPermissions as root, use acceptEdits instead
+        // Note: --output-format must come before -p
         const cliQueryResult = await new Promise<{ success: boolean; output?: string; error?: string }>((resolve) => {
-          const cliProcess = spawn('claude', ['-p', '--print', '--permission-mode', 'acceptEdits', '--output-format', 'json', 'Say "Hello, World!" in exactly those words.'], {
+          const cliProcess = spawn('claude', ['--output-format', 'json', '-p', '--print', '--permission-mode', 'acceptEdits', 'Say "Hello, World!" in exactly those words.'], {
             stdio: ['ignore', 'pipe', 'pipe'],
             cwd: testDir,
             env: {
@@ -1112,6 +1142,11 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Helper function to extract text from SDK message
 function getMessageText(message: SDKMessage): string {
+  // Handle CLI result messages (from direct CLI calls)
+  if ('result' in message && typeof message.result === 'string' && message.result) {
+    return message.result;
+  }
+
   // Handle different message types from the SDK
   if ('content' in message && typeof message.content === 'string') {
     return message.content;
@@ -1147,5 +1182,5 @@ function getMessageText(message: SDKMessage): string {
   }
 
   // Last resort: return a generic message instead of JSON
-  return JSON.stringify(message);
+  return 'Processing completed. Check the generated changes for details.';
 }
