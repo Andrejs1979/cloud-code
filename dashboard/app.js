@@ -571,20 +571,25 @@ const views = {
       const row = dom.el('div', { className: 'flex items-center justify-between' });
 
       const info = dom.el('div', {});
-      const name = dom.el('p', { className: 'text-sm', textContent: 'Claude API Key' });
-      const desc = dom.el('p', { className: 'text-xs text-text-secondary', textContent: 'Required for AI code generation' });
+      const name = dom.el('p', { className: 'text-sm', textContent: 'Claude API (Centralized)' });
+      const desc = dom.el('p', { className: 'text-xs text-text-secondary', textContent: 'Managed by service administrator' });
       info.appendChild(name);
       info.appendChild(desc);
 
-      const btn = dom.el('button', {
-        className: 'btn-secondary px-4 py-2 rounded-lg text-sm',
-        textContent: state.isConfigured ? 'Update' : 'Set' + ' Key',
-        onclick: () => app.showClaudeSetup()
+      const statusEl = dom.el('span', {
+        className: 'text-xs ' + (state.stats?.claudeKeyConfigured ? 'text-success' : 'text-warning'),
+        textContent: state.stats?.claudeKeyConfigured ? 'Configured' : 'Not Set'
       });
 
       row.appendChild(info);
-      row.appendChild(btn);
+      row.appendChild(statusEl);
       card.appendChild(row);
+
+      const hint = dom.el('p', {
+        className: 'text-xs text-text-secondary mt-2',
+        textContent: 'Contact your administrator to configure the Claude API key'
+      });
+      card.appendChild(hint);
 
       return card;
     },
@@ -965,10 +970,6 @@ const app = {
 
   openGitHubSetup() {
     window.location.href = '/gh-setup';
-  },
-
-  showClaudeSetup() {
-    window.location.href = '/claude-setup';
   },
 
   startAutoRefresh() {
