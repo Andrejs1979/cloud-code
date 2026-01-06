@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 FROM node:22-slim AS base
-# Cache bust for security fixes - 2025-01-06
+# Cache bust for security fixes - 2025-01-06-v2
 
 # Update package lists and install dependencies
 RUN apt-get update && \
@@ -14,8 +14,8 @@ RUN apt-get update && \
         ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code CLI globally (secure version 2.0.76+)
-RUN npm install -g @anthropic-ai/claude-code@2.0.76
+# Install Claude Code CLI globally (secure version 2.0.77)
+RUN npm install -g @anthropic-ai/claude-code@2.0.77
 
 # Set destination for COPY
 WORKDIR /app
