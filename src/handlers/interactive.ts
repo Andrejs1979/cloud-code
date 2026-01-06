@@ -101,9 +101,12 @@ export async function handleStartInteractiveSession(
     // Get GitHub token if repository is provided
     let githubToken: string | undefined;
     if (body.repository) {
-      const tokenResponse = await claudeConfigDO.fetch(new Request('http://internal/get-installation-token'));
-      const tokenData = await tokenResponse.json() as { token: string | null };
-      githubToken = tokenData.token || undefined;
+      // Use github-app-config DO (not claude-config) for installation token
+      const githubConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
+      const githubConfigDO = (env.GITHUB_APP_CONFIG as any).get(githubConfigId);
+      const tokenResponse = await githubConfigDO.fetch(new Request('http://internal/get-installation-token'));
+      const tokenData = tokenResponse.ok ? await tokenResponse.json() as { token: string | null } : null;
+      githubToken = tokenData?.token || undefined;
     }
 
     // Create unique container for this session

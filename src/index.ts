@@ -950,6 +950,50 @@ export default {
         response = await handleGitHubStatus(request, env);
       }
 
+      // Debug endpoint to test the DO's get-installation-token endpoint
+      else if (pathname === '/debug-get-token') {
+        logWithContext('MAIN_HANDLER', 'Debug get-installation-token endpoint');
+        routeMatched = true;
+
+        try {
+          const configId = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
+          const configDO = (env.GITHUB_APP_CONFIG as any).get(configId);
+
+          const tokenResponse = await configDO.fetch(new Request('http://internal/get-installation-token'));
+          const tokenData = tokenResponse.ok ? await tokenResponse.json() : null;
+          const responseStatus = tokenResponse.status;
+          const responseText = !tokenResponse.ok ? await tokenResponse.text() : null;
+
+          // Also get the config to see what's stored
+          const configResponse = await configDO.fetch(new Request('http://internal/get'));
+          const config = await configResponse.json();
+
+          response = new Response(JSON.stringify({
+            tokenResponse: {
+              status: responseStatus,
+              ok: tokenResponse.ok,
+              data: tokenData,
+              error: responseText
+            },
+            config: {
+              appId: config.appId,
+              installationId: config.installationId,
+              repositoryCount: config.repositories?.length || 0
+            }
+          }, null, 2), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        } catch (error: any) {
+          response = new Response(JSON.stringify({
+            error: error.message,
+            stack: error.stack
+          }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
+
       // Debug endpoint to test installation token generation
       else if (pathname === '/debug-install-token') {
         logWithContext('MAIN_HANDLER', 'Debug install token generation');
