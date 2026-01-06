@@ -616,7 +616,7 @@ async function processIssueHandler(req: http.IncomingMessage, res: http.ServerRe
   if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
     logWithContext('ISSUE_HANDLER', 'Missing Anthropic API key');
     res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'ANTHROPIC_API_KEY not provided' }));
+    res.end(JSON.stringify({ error: 'API key required: ANTHROPIC_API_KEY not provided' }));
     return;
   }
 

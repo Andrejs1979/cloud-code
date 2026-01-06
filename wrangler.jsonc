@@ -1,6 +1,6 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "claude-code-containers",
+	"name": "cloud-code",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-05-23",
 	"account_id": "d9700a3fcc05a01f5d81670ebbae817d",
@@ -19,7 +19,7 @@
 			"class_name": "MyContainer",
 			"image": "./Dockerfile",
 			"max_instances": 10,
-			"name": "claude-code-containers"
+			"name": "cloud-code"
 		}
 	],
 	"durable_objects": {
@@ -31,6 +31,10 @@
 			{
 				"class_name": "GitHubAppConfigDO",
 				"name": "GITHUB_APP_CONFIG"
+			},
+			{
+				"class_name": "InteractiveSessionDO",
+				"name": "INTERACTIVE_SESSIONS"
 			}
 		]
 	},
@@ -38,6 +42,14 @@
 		{
 			"new_sqlite_classes": ["MyContainer"],
 			"tag": "v4-re-add-container"
+		},
+		{
+			"new_sqlite_classes": ["GitHubAppConfigDO"],
+			"tag": "v5-add-github-config-do"
+		},
+		{
+			"new_sqlite_classes": ["InteractiveSessionDO"],
+			"tag": "v6-add-interactive-session-do"
 		}
 	]
 }

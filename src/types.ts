@@ -68,5 +68,22 @@ export interface GitHubAppConfig {
 export interface Env {
   MY_CONTAINER: DurableObjectNamespace<any>;
   GITHUB_APP_CONFIG: DurableObjectNamespace<any>;
+  INTERACTIVE_SESSIONS: DurableObjectNamespace<any>;
   DASHBOARD_ASSETS?: Fetcher;
+}
+
+// Interactive Session State
+export interface InteractiveSessionState {
+  sessionId: string;
+  status: 'starting' | 'ready' | 'processing' | 'waiting_input' | 'completed' | 'error';
+  repository?: {
+    url: string;
+    name: string;
+    branch?: string;
+  };
+  currentTurn: number;
+  createdAt: number;
+  lastActivityAt: number;
+  completedAt?: number;
+  errorMessage?: string;
 }

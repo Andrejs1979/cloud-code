@@ -6,7 +6,7 @@
 
 import { logWithContext } from '../log';
 import { containerFetch, getRouteFromRequest } from '../fetch';
-import type { Env } from '../types';
+import type { Env, InteractiveSessionState } from '../types';
 
 // ============================================================================
 // Types
@@ -67,9 +67,27 @@ export async function handleStartInteractiveSession(
     // Generate session ID
     const sessionId = generateSessionId();
 
+    // Create session record in DO
+    // Use any to avoid deep type instantiation with DurableObjectNamespace
+    const sessionDO = (env.INTERACTIVE_SESSIONS as any).idFromName('session-manager');
+    const sessionDOStub = (env.INTERACTIVE_SESSIONS as any).get(sessionDO);
+    const now = Date.now();
+
+    await sessionDOStub.fetch(new Request('http://internal/create', {
+      method: 'POST',
+      body: JSON.stringify({
+        sessionId,
+        status: 'starting',
+        repository: body.repository,
+        currentTurn: 0,
+        createdAt: now,
+        lastActivityAt: now
+      } satisfies InteractiveSessionState)
+    }));
+
     // Get credentials
-    const claudeConfigId = env.GITHUB_APP_CONFIG.idFromName('claude-config');
-    const claudeConfigDO = env.GITHUB_APP_CONFIG.get(claudeConfigId);
+    const claudeConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('claude-config');
+    const claudeConfigDO = (env.GITHUB_APP_CONFIG as any).get(claudeConfigId);
     const claudeKeyResponse = await claudeConfigDO.fetch(new Request('http://internal/get-claude-key'));
     const claudeKeyData = await claudeKeyResponse.json() as { anthropicApiKey: string | null };
 
@@ -90,8 +108,8 @@ export async function handleStartInteractiveSession(
 
     // Create unique container for this session
     const containerName = `interactive-${sessionId}`;
-    const id = env.MY_CONTAINER.idFromName(containerName);
-    const container = env.MY_CONTAINER.get(id);
+    const id = (env.MY_CONTAINER as any).idFromName(containerName);
+    const container = (env.MY_CONTAINER as any).get(id);
 
     // Prepare session config
     const sessionConfig = {
@@ -196,19 +214,31 @@ export async function handleInteractiveRequest(
       return Response.json({ error: 'sessionId is required' }, { status: 400 });
     }
 
-    // Check session status from session DO (if implemented)
-    return Response.json({
-      sessionId,
-      status: 'unknown'
-    });
+    // Check session status from session DO
+    const sessionDO = (env.INTERACTIVE_SESSIONS as any).idFromName('session-manager');
+    const sessionDOStub = (env.INTERACTIVE_SESSIONS as any).get(sessionDO);
+    const statusResponse = await sessionDOStub.fetch(
+      new Request(`http://internal/get?sessionId=${encodeURIComponent(sessionId)}`)
+    );
+    const sessionData = await statusResponse.json() as InteractiveSessionState | null;
+
+    return Response.json(sessionData || { error: 'Session not found' });
   }
 
   // End session
   if (pathname.startsWith('/interactive/') && request.method === 'DELETE') {
     const sessionId = pathname.split('/')[2];
     const containerName = `interactive-${sessionId}`;
-    const id = env.MY_CONTAINER.idFromName(containerName);
-    const container = env.MY_CONTAINER.get(id);
+    const id = (env.MY_CONTAINER as any).idFromName(containerName);
+    const container = (env.MY_CONTAINER as any).get(id);
+
+    // Mark session as ended in DO
+    const sessionDO = (env.INTERACTIVE_SESSIONS as any).idFromName('session-manager');
+    const sessionDOStub = (env.INTERACTIVE_SESSIONS as any).get(sessionDO);
+    await sessionDOStub.fetch(new Request('http://internal/end', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId })
+    }));
 
     // Send shutdown signal to container
     await containerFetch(

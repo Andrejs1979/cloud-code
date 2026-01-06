@@ -1,22 +1,56 @@
 import jwt from '@tsndr/cloudflare-worker-jwt';
 import { logWithContext } from './log';
 
+// ============================================================================
+// Encryption Key Management
+// ============================================================================
+
+/**
+ * Generate or retrieve encryption key from environment
+ * In production, use Cloudflare Secrets or proper KMS
+ */
+async function getEncryptionKey(): Promise<CryptoKey> {
+  // Generate a deterministic key from the account/project
+  // In production, this should be stored in Cloudflare Secrets or proper KMS
+  // For now, derive from worker identity to ensure consistency across deployments
+  const projectId = 'cloud-code-worker-v1';
+  const keyDerivation = new TextEncoder().encode(projectId);
+
+  // Use PBKDF2 to derive a proper key from the project identifier
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    keyDerivation,
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: new Uint8Array(16), // Zero salt for deterministic key (should use proper salt in prod)
+      iterations: 100000,
+      hash: 'SHA-256'
+    },
+    keyMaterial,
+    256 // 256-bit key
+  );
+
+  return crypto.subtle.importKey(
+    'raw',
+    new Uint8Array(derivedBits),
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
 // Encryption utilities
 export async function encrypt(text: string, key?: CryptoKey): Promise<string> {
   logWithContext('ENCRYPTION', 'Starting encryption process');
 
   if (!key) {
-    logWithContext('ENCRYPTION', 'Generating encryption key from static material');
-    // Generate a simple key from static data for now
-    // In production, this should use proper key management
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw',
-      new TextEncoder().encode('github-app-encryption-key-32char'),
-      { name: 'AES-GCM' },
-      false,
-      ['encrypt']
-    );
-    key = keyMaterial;
+    key = await getEncryptionKey();
   }
 
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -41,16 +75,7 @@ export async function decrypt(encryptedText: string, key?: CryptoKey): Promise<s
   logWithContext('DECRYPTION', 'Starting decryption process');
 
   if (!key) {
-    logWithContext('DECRYPTION', 'Generating decryption key from static material');
-    // Generate the same key
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw',
-      new TextEncoder().encode('github-app-encryption-key-32char'),
-      { name: 'AES-GCM' },
-      false,
-      ['decrypt']
-    );
-    key = keyMaterial;
+    key = await getEncryptionKey();
   }
 
   const combined = new Uint8Array(

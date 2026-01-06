@@ -93,6 +93,10 @@ export function recordContainerShutdown(): void {
   metrics.containers.active--;
 }
 
+export function getRequestCount(): number {
+  return metrics.requests.total;
+}
+
 // ============================================================================
 // Health Check Handler
 // ============================================================================
@@ -103,15 +107,15 @@ export async function handleHealthCheck(_request: Request, env: Env): Promise<Re
   logWithContext('HEALTH_CHECK', 'Health check requested', { uptime });
 
   // Check GitHub App configuration
-  const githubConfigId = env.GITHUB_APP_CONFIG.idFromName('github-app-config');
-  const githubConfigDO = env.GITHUB_APP_CONFIG.get(githubConfigId);
+  const githubConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
+  const githubConfigDO = (env.GITHUB_APP_CONFIG as any).get(githubConfigId);
   const githubConfigResponse = await githubConfigDO.fetch(new Request('http://internal/get'));
   const githubConfig = await githubConfigResponse.json().catch(() => null);
   const githubConfigured = !!githubConfig && !!githubConfig.appId;
 
   // Check Claude configuration
-  const claudeConfigId = env.GITHUB_APP_CONFIG.idFromName('claude-config');
-  const claudeConfigDO = env.GITHUB_APP_CONFIG.get(claudeConfigId);
+  const claudeConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('claude-config');
+  const claudeConfigDO = (env.GITHUB_APP_CONFIG as any).get(claudeConfigId);
   const claudeConfigResponse = await claudeConfigDO.fetch(new Request('http://internal/get-claude-key'));
   const claudeConfig = await claudeConfigResponse.json().catch(() => null);
   const claudeConfigured = !!claudeConfig && !!claudeConfig.anthropicApiKey;
@@ -224,8 +228,8 @@ export async function handlePrometheusMetrics(_request: Request): Promise<Respon
 
 async function getWebhookStats(env: Env): Promise<{ totalWebhooks: number; lastWebhookAt: string | null } | null> {
   try {
-    const configId = env.GITHUB_APP_CONFIG.idFromName('github-app-config');
-    const configDO = env.GITHUB_APP_CONFIG.get(configId);
+    const configId = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
+    const configDO = (env.GITHUB_APP_CONFIG as any).get(configId);
     const response = await configDO.fetch(new Request('http://internal/get-webhook-stats', {
       method: 'GET'
     }));

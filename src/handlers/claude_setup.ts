@@ -29,8 +29,8 @@ export async function handleClaudeSetup(request: Request, origin: string, env: a
       const deploymentId = 'claude-config'; // Single config per deployment
       logWithContext('CLAUDE_SETUP', 'Storing API key in Durable Object', { deploymentId });
 
-      const id = env.GITHUB_APP_CONFIG.idFromName(deploymentId);
-      const configDO = env.GITHUB_APP_CONFIG.get(id);
+      const id = (env.GITHUB_APP_CONFIG as any).idFromName(deploymentId);
+      const configDO = (env.GITHUB_APP_CONFIG as any).get(id);
 
       // Encrypt the API key
       const encryptedApiKey = await encrypt(apiKey);

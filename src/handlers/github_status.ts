@@ -4,16 +4,52 @@ export async function handleGitHubStatus(_request: Request, env: any): Promise<R
   const url = new URL(_request.url);
   const appId = url.searchParams.get('app_id');
 
+  // If no app_id provided, return general system status
   if (!appId) {
-    return new Response(JSON.stringify({ error: 'Missing app_id parameter' }), {
-      headers: { 'Content-Type': 'application/json' },
-      status: 400
-    });
+    try {
+      // Check GitHub App configuration
+      const githubConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
+      const githubConfigDO = (env.GITHUB_APP_CONFIG as any).get(githubConfigId);
+      const githubConfigResponse = await githubConfigDO.fetch(new Request('http://internal/get'));
+      const githubConfig = await githubConfigResponse.json().catch(() => null);
+      const githubAppConfigured = !!githubConfig && !!githubConfig.appId;
+
+      // Check Claude configuration
+      const claudeConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('claude-config');
+      const claudeConfigDO = (env.GITHUB_APP_CONFIG as any).get(claudeConfigId);
+      const claudeConfigResponse = await claudeConfigDO.fetch(new Request('http://internal/get-claude-key'));
+      const claudeConfig = await claudeConfigResponse.json().catch(() => null);
+      const claudeConfigured = !!claudeConfig && !!claudeConfig.anthropicApiKey;
+
+      const repositoryCount = githubConfig?.repositories?.length || 0;
+
+      const status = {
+        githubAppConfigured,
+        claudeConfigured,
+        repositoryCount,
+        ready: githubAppConfigured && claudeConfigured
+      };
+
+      return new Response(JSON.stringify(status, null, 2), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (error) {
+      console.error('Error fetching system status:', error);
+      return new Response(JSON.stringify({
+        githubAppConfigured: false,
+        claudeConfigured: false,
+        repositoryCount: 0,
+        ready: false
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
   }
 
+  // With app_id, return specific app configuration
   try {
-    const id = env.GITHUB_APP_CONFIG.idFromName(appId);
-    const configDO = env.GITHUB_APP_CONFIG.get(id);
+    const id = (env.GITHUB_APP_CONFIG as any).idFromName(appId);
+    const configDO = (env.GITHUB_APP_CONFIG as any).get(id);
 
     const response = await configDO.fetch(new Request('http://internal/get'));
     const config = await response.json() as GitHubAppConfig | null;

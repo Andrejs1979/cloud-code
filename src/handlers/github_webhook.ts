@@ -163,8 +163,8 @@ export async function handleGitHubWebhook(request: Request, env: any): Promise<R
     // Get app configuration and decrypt webhook secret
     logWithContext('WEBHOOK', 'Retrieving app configuration', { appId });
 
-    const id = env.GITHUB_APP_CONFIG.idFromName(appId);
-    const configDO = env.GITHUB_APP_CONFIG.get(id);
+    const id = (env.GITHUB_APP_CONFIG as any).idFromName(appId);
+    const configDO = (env.GITHUB_APP_CONFIG as any).get(id);
 
     const configResponse = await configDO.fetch(new Request('http://internal/get-credentials'));
 

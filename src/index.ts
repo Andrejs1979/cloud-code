@@ -8,9 +8,9 @@ import { handleGitHubStatus } from './handlers/github_status';
 import { handleGitHubWebhook } from './handlers/github_webhook';
 import { handleInteractiveRequest } from './handlers/interactive';
 import { handleDashboardAPI, serveDashboard } from './handlers/dashboard';
-import { handleHealthCheck, handleMetrics, handlePrometheusMetrics } from './handlers/health';
+import { handleHealthCheck, handleMetrics, handlePrometheusMetrics, recordRequest, recordContainerStartup, recordContainerShutdown, getRequestCount } from './handlers/health';
 import { logWithContext } from './log';
-import type { GitHubAppConfig, Repository, Env } from './types';
+import type { GitHubAppConfig, Repository, Env, InteractiveSessionState } from './types';
 
 /**
  * Rewrites a request with a new pathname while preserving other properties
@@ -26,7 +26,6 @@ function rewriteRequestPath(request: Request, newPathname: string): Request {
     method: request.method,
     headers: request.headers,
     body,
-    // @ts-expect-error - cf property is not in standard Request type
     cf: request.cf
   });
 }
@@ -579,6 +578,190 @@ export class GitHubAppConfigDO {
   }
 }
 
+/**
+ * Interactive Session Durable Object
+ * Manages state for interactive Claude Code sessions
+ */
+export class InteractiveSessionDO {
+  private storage: DurableObjectStorage;
+
+  constructor(state: DurableObjectState) {
+    this.storage = state.storage;
+    this.initializeTables();
+    logWithContext('SESSION_DO', 'InteractiveSessionDO initialized');
+  }
+
+  private initializeTables(): void {
+    this.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        session_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        repository_url TEXT,
+        repository_name TEXT,
+        repository_branch TEXT,
+        current_turn INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        last_activity_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        error_message TEXT
+      )
+    `);
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+
+    // Create or update session
+    if (url.pathname === '/create' && request.method === 'POST') {
+      const sessionData = await request.json() as InteractiveSessionState;
+      await this.createSession(sessionData);
+      return new Response('OK');
+    }
+
+    // Update session status
+    if (url.pathname === '/update' && request.method === 'POST') {
+      const { sessionId, status, currentTurn } = await request.json() as {
+        sessionId: string;
+        status: InteractiveSessionState['status'];
+        currentTurn?: number;
+      };
+      await this.updateSessionStatus(sessionId, status, currentTurn);
+      return new Response('OK');
+    }
+
+    // Get session status
+    if (url.pathname === '/get' && request.method === 'GET') {
+      const sessionId = url.searchParams.get('sessionId');
+      if (!sessionId) {
+        return new Response('sessionId required', { status: 400 });
+      }
+      const session = await this.getSession(sessionId);
+      return new Response(JSON.stringify(session || null));
+    }
+
+    // End session
+    if (url.pathname === '/end' && request.method === 'POST') {
+      const { sessionId } = await request.json() as { sessionId: string };
+      await this.endSession(sessionId);
+      return new Response('OK');
+    }
+
+    // Clean up old sessions
+    if (url.pathname === '/cleanup' && request.method === 'POST') {
+      const count = await this.cleanupOldSessions();
+      return new Response(JSON.stringify({ deleted: count }));
+    }
+
+    return new Response('Not Found', { status: 404 });
+  }
+
+  private async createSession(session: InteractiveSessionState): Promise<void> {
+    this.storage.sql.exec(
+      `INSERT INTO sessions (
+        session_id, status, repository_url, repository_name, repository_branch,
+        current_turn, created_at, last_activity_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      session.sessionId,
+      session.status,
+      session.repository?.url || null,
+      session.repository?.name || null,
+      session.repository?.branch || null,
+      session.currentTurn,
+      session.createdAt,
+      session.lastActivityAt
+    );
+
+    logWithContext('SESSION_DO', 'Session created', { sessionId: session.sessionId });
+  }
+
+  private async updateSessionStatus(
+    sessionId: string,
+    status: InteractiveSessionState['status'],
+    currentTurn?: number
+  ): Promise<void> {
+    const now = Date.now();
+    const updates = ['last_activity_at = ?', 'status = ?'];
+    const values: any[] = [now, status];
+
+    if (currentTurn !== undefined) {
+      updates.push('current_turn = ?');
+      values.push(currentTurn);
+    }
+
+    values.push(sessionId);
+
+    this.storage.sql.exec(
+      `UPDATE sessions SET ${updates.join(', ')} WHERE session_id = ?`,
+      ...values
+    );
+
+    if (status === 'completed' || status === 'error') {
+      this.storage.sql.exec(
+        'UPDATE sessions SET completed_at = ? WHERE session_id = ?',
+        now,
+        sessionId
+      );
+    }
+
+    logWithContext('SESSION_DO', 'Session updated', { sessionId, status });
+  }
+
+  private async getSession(sessionId: string): Promise<InteractiveSessionState | null> {
+    const cursor = this.storage.sql.exec(
+      'SELECT * FROM sessions WHERE session_id = ? LIMIT 1',
+      sessionId
+    );
+    const results = cursor.toArray();
+
+    if (results.length === 0) {
+      return null;
+    }
+
+    const row = results[0];
+    return {
+      sessionId: row.session_id as string,
+      status: row.status as InteractiveSessionState['status'],
+      repository: row.repository_name ? {
+        url: row.repository_url as string,
+        name: row.repository_name as string,
+        branch: row.repository_branch as string | undefined
+      } : undefined,
+      currentTurn: row.current_turn as number,
+      createdAt: row.created_at as number,
+      lastActivityAt: row.last_activity_at as number,
+      completedAt: row.completed_at as number | undefined,
+      errorMessage: row.error_message as string | undefined
+    };
+  }
+
+  private async endSession(sessionId: string): Promise<void> {
+    const now = Date.now();
+    this.storage.sql.exec(
+      `UPDATE sessions SET status = 'completed', completed_at = ?, last_activity_at = ? WHERE session_id = ?`,
+      now,
+      now,
+      sessionId
+    );
+
+    logWithContext('SESSION_DO', 'Session ended', { sessionId });
+  }
+
+  private async cleanupOldSessions(maxAge = 24 * 60 * 60 * 1000): Promise<number> {
+    const cutoff = Date.now() - maxAge;
+    const cursor = this.storage.sql.exec(
+      'DELETE FROM sessions WHERE completed_at IS NOT NULL AND completed_at < ?',
+      cutoff
+    );
+    const deleted = cursor.rowsWritten || 0;
+
+    if (deleted > 0) {
+      logWithContext('SESSION_DO', 'Cleaned up old sessions', { deleted });
+    }
+
+    return deleted;
+  }
+}
+
 export class MyContainer extends Container {
   defaultPort = 8080;
   requiredPorts = [8080];
@@ -666,6 +849,7 @@ export class MyContainer extends Container {
   }
 
   onStart() {
+    recordContainerStartup();
     logWithContext('CONTAINER_LIFECYCLE', 'Container started successfully', {
       port: this.defaultPort,
       sleepAfter: this.sleepAfter
@@ -673,6 +857,7 @@ export class MyContainer extends Container {
   }
 
   onStop() {
+    recordContainerShutdown();
     logWithContext('CONTAINER_LIFECYCLE', 'Container shut down successfully');
   }
 
@@ -766,8 +951,8 @@ export default {
       else if (pathname.startsWith('/container')) {
         logWithContext('MAIN_HANDLER', 'Routing to basic container');
         routeMatched = true;
-        let id = env.MY_CONTAINER.idFromName('container');
-        let container = env.MY_CONTAINER.get(id);
+        let id = (env.MY_CONTAINER as any).idFromName('container');
+        let container = (env.MY_CONTAINER as any).get(id);
 
         // Map /container/* to container's internal routes
         let containerPath = '/';
@@ -789,8 +974,8 @@ export default {
       else if (pathname.startsWith('/error')) {
         logWithContext('MAIN_HANDLER', 'Routing to error test container');
         routeMatched = true;
-        let id = env.MY_CONTAINER.idFromName('error-test');
-        let container = env.MY_CONTAINER.get(id);
+        let id = (env.MY_CONTAINER as any).idFromName('error-test');
+        let container = (env.MY_CONTAINER as any).get(id);
 
         // Map /error/* to container's /error endpoint
         const rewrittenRequest = rewriteRequestPath(request, '/error');
@@ -803,7 +988,7 @@ export default {
       else if (pathname.startsWith('/lb')) {
         logWithContext('MAIN_HANDLER', 'Routing to load balanced containers');
         routeMatched = true;
-        let container = await loadBalance(env.MY_CONTAINER, 3);
+        let container = await loadBalance(env.MY_CONTAINER as any, 3);
 
         // Map /lb to container's health endpoint
         const rewrittenRequest = rewriteRequestPath(request, '/container');
@@ -816,7 +1001,7 @@ export default {
       else if (pathname.startsWith('/singleton')) {
         logWithContext('MAIN_HANDLER', 'Routing to singleton container');
         routeMatched = true;
-        const container: DurableObjectStub<Container<unknown>> = getContainer(env.MY_CONTAINER);
+        const container = getContainer(env.MY_CONTAINER as any);
 
         // Map /singleton to container's health endpoint
         const rewrittenRequest = rewriteRequestPath(request, '/container');
@@ -874,6 +1059,13 @@ Once both setups are complete, create GitHub issues to trigger automatic Claude 
       }
 
       const processingTime = Date.now() - startTime;
+
+      // Record metrics
+      recordRequest(pathname, response.status, processingTime);
+
+      // Add metrics headers to response
+      response.headers.set('X-Response-Time', `${processingTime}ms`);
+      response.headers.set('X-Request-Count', getRequestCount().toString());
 
       logWithContext('MAIN_HANDLER', 'Request completed successfully', {
         pathname,

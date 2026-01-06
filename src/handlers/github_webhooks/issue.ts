@@ -21,8 +21,8 @@ async function routeToClaudeCodeContainer(issue: any, repository: any, env: any,
   });
 
   // Create unique container for this issue
-  const id = env.MY_CONTAINER.idFromName(containerName);
-  const container = env.MY_CONTAINER.get(id);
+  const id = (env.MY_CONTAINER as any).idFromName(containerName);
+  const container = (env.MY_CONTAINER as any).get(id);
 
   // Get installation token for GitHub API access
   logWithContext('CLAUDE_ROUTING', 'Retrieving installation token');
@@ -37,8 +37,8 @@ async function routeToClaudeCodeContainer(issue: any, repository: any, env: any,
   // Get Claude API key from secure storage
   logWithContext('CLAUDE_ROUTING', 'Retrieving Claude API key');
 
-  const claudeConfigId = env.GITHUB_APP_CONFIG.idFromName('claude-config');
-  const claudeConfigDO = env.GITHUB_APP_CONFIG.get(claudeConfigId);
+  const claudeConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('claude-config');
+  const claudeConfigDO = (env.GITHUB_APP_CONFIG as any).get(claudeConfigId);
   const claudeKeyResponse = await claudeConfigDO.fetch(new Request('http://internal/get-claude-key'));
   const claudeKeyData = await claudeKeyResponse.json() as { anthropicApiKey: string | null };
 
@@ -195,8 +195,8 @@ export async function handleIssuesEvent(data: any, env: any, configDO: any): Pro
 
   // For other issue actions, use the standard container routing
   const containerName = `repo-${repository.id}`;
-  const id = env.MY_CONTAINER.idFromName(containerName);
-  const container = env.MY_CONTAINER.get(id);
+  const id = (env.MY_CONTAINER as any).idFromName(containerName);
+  const container = (env.MY_CONTAINER as any).get(id);
 
   const webhookPayload = {
     event: 'issues',

@@ -275,8 +275,8 @@ function handleGetSessions(): Response {
  */
 async function handleGetIssues(env: { GITHUB_APP_CONFIG: any }): Promise<Response> {
   try {
-    const configDO = env.GITHUB_APP_CONFIG.idFromName('github-config');
-    const configStub = env.GITHUB_APP_CONFIG.get(configDO);
+    const configDO = (env.GITHUB_APP_CONFIG as any).idFromName('github-config');
+    const configStub = (env.GITHUB_APP_CONFIG as any).get(configDO);
 
     // Get app config to check if connected
     const configResponse = await configStub.fetch(new Request('http://do/get'));
@@ -325,8 +325,8 @@ async function handleGetIssues(env: { GITHUB_APP_CONFIG: any }): Promise<Respons
  */
 async function handleGetStats(env: { GITHUB_APP_CONFIG: any }): Promise<Response> {
   try {
-    const configDO = env.GITHUB_APP_CONFIG.idFromName('github-config');
-    const configStub = env.GITHUB_APP_CONFIG.get(configDO);
+    const configDO = (env.GITHUB_APP_CONFIG as any).idFromName('github-config');
+    const configStub = (env.GITHUB_APP_CONFIG as any).get(configDO);
 
     // Get installation stats
     const statsResponse = await configStub.fetch(new Request('http://do/get-installation-stats'));
