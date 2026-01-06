@@ -3,20 +3,20 @@
  * Provides offline capability and caching
  */
 
-const CACHE_NAME = 'claude-pipeline-v1';
+const CACHE_NAME = 'claude-pipeline-v2';
 const urlsToCache = [
   '/dashboard/',
   '/dashboard/index.html',
   '/dashboard/app.js',
+  '/dashboard/output.css',
   '/dashboard/manifest.json',
-  'https://cdn.tailwindcss.com',
 ];
 
 // Install event - cache resources
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(urlsToCache.filter(url => !url.startsWith('http')));
+      return cache.addAll(urlsToCache);
     })
   );
   self.skipWaiting();
@@ -42,7 +42,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Skip cross-origin requests
+  // Skip cross-origin requests (except for specific allowed origins)
   if (url.origin !== self.location.origin) {
     return;
   }

@@ -275,11 +275,11 @@ function handleGetSessions(): Response {
  */
 async function handleGetIssues(env: { GITHUB_APP_CONFIG: any }): Promise<Response> {
   try {
-    const configDO = (env.GITHUB_APP_CONFIG as any).idFromName('github-config');
+    const configDO = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
     const configStub = (env.GITHUB_APP_CONFIG as any).get(configDO);
 
     // Get app config to check if connected
-    const configResponse = await configStub.fetch(new Request('http://do/get'));
+    const configResponse = await configStub.fetch(new Request('http://internal/get'));
     const configText = await configResponse.text();
 
     if (!configText) {
@@ -325,34 +325,46 @@ async function handleGetIssues(env: { GITHUB_APP_CONFIG: any }): Promise<Respons
  */
 async function handleGetStats(env: { GITHUB_APP_CONFIG: any }): Promise<Response> {
   try {
-    const configDO = (env.GITHUB_APP_CONFIG as any).idFromName('github-config');
+    const configDO = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
     const configStub = (env.GITHUB_APP_CONFIG as any).get(configDO);
 
-    // Get installation stats
-    const statsResponse = await configStub.fetch(new Request('http://do/get-installation-stats'));
-    const stats = await statsResponse.json() as {
-      appId: string | null;
-      repositoryCount: number;
-      hasClaudeConfig: boolean;
-      installationId: string | null;
-      createdAt: string | null;
-    };
+    // Get app config to retrieve repository list and webhook stats
+    const configResponse = await configStub.fetch(new Request('http://internal/get'));
+    const configText = await configResponse.text();
 
-    // Get webhook stats
-    const webhookResponse = await configStub.fetch(new Request('http://do/get-webhook-stats'));
-    const webhookStats = await webhookResponse.json() as {
-      totalWebhooks: number;
-      lastWebhookAt: string | null;
-    };
+    let repositories: string[] = [];
+    let repositoryCount = 0;
+    let totalWebhooks = 0;
+
+    if (configText) {
+      try {
+        const config = JSON.parse(configText);
+        repositoryCount = config.repositories?.length || 0;
+        // Extract repository full names
+        repositories = (config.repositories || []).map((repo: any) => repo.full_name || repo.name || String(repo));
+
+        // Get webhook stats from DO
+        const webhookResponse = await configStub.fetch(new Request('http://internal/get-webhook-stats'));
+        if (webhookResponse.ok) {
+          const webhookStats = await webhookResponse.json() as {
+            totalWebhooks?: number;
+            lastWebhookAt?: string | null;
+          } | null;
+          totalWebhooks = webhookStats?.totalWebhooks || 0;
+        }
+      } catch (parseError) {
+        logWithContext('DASHBOARD_API', 'Failed to parse config', {
+          error: parseError instanceof Error ? parseError.message : String(parseError)
+        });
+      }
+    }
 
     const dashboardStats: DashboardStats = {
-      totalIssues: webhookStats.totalWebhooks || 0,
-      processedIssues: webhookStats.totalWebhooks || 0,
+      totalIssues: totalWebhooks,
+      processedIssues: totalWebhooks,
       activeSessions: sessions.size,
-      successRate: 95, // Mock value
-      repositories: stats.repositoryCount > 0
-        ? [`Connected (${stats.repositoryCount} repos)`]
-        : []
+      successRate: totalWebhooks > 0 ? 95 : 0,
+      repositories
     };
 
     logWithContext('DASHBOARD_API', 'Returning stats', dashboardStats);

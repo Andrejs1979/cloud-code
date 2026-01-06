@@ -244,6 +244,11 @@ export class GitHubAppConfigDO {
       return new Response(JSON.stringify({ token: result.token }));
     }
 
+    if (url.pathname === '/get-webhook-stats' && request.method === 'GET') {
+      const stats = await this.getWebhookStats();
+      return new Response(JSON.stringify(stats));
+    }
+
     logWithContext('DURABLE_OBJECT', 'Unknown endpoint requested', {
       method: request.method,
       pathname: url.pathname
