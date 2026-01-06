@@ -950,6 +950,99 @@ export default {
         response = await handleGitHubStatus(request, env);
       }
 
+      // Debug endpoint to test installation token generation
+      else if (pathname === '/debug-install-token') {
+        logWithContext('MAIN_HANDLER', 'Debug install token generation');
+        routeMatched = true;
+
+        const installationId = url.searchParams.get('installation_id');
+
+        if (!installationId) {
+          response = new Response(JSON.stringify({ error: 'Missing installation_id parameter' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        } else {
+          try {
+            const configId = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
+            const configDO = (env.GITHUB_APP_CONFIG as any).get(configId);
+
+            const tokenResponse = await configDO.fetch(new Request('http://internal/generate-installation-token', {
+              method: 'POST',
+              body: JSON.stringify({ installationId })
+            }));
+
+            const tokenData = tokenResponse.ok ? await tokenResponse.json() : null;
+            const responseStatus = tokenResponse.status;
+            const responseText = !tokenResponse.ok ? await tokenResponse.text() : null;
+
+            // Try to fetch repositories
+            let repos: any[] = [];
+            let reposError = null;
+
+            if (tokenData?.token) {
+              try {
+                const installResponse = await fetch(`https://api.github.com/installation/repositories`, {
+                  headers: {
+                    'Authorization': `Bearer ${tokenData.token}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                    'User-Agent': 'Claude-Code-Worker'
+                  }
+                });
+
+                if (installResponse.ok) {
+                  const installData = await installResponse.json() as any;
+                  repos = installData.repositories || [];
+                } else {
+                  reposError = {
+                    status: installResponse.status,
+                    statusText: installResponse.statusText,
+                    text: await installResponse.text()
+                  };
+                }
+              } catch (e: any) {
+                reposError = { message: e.message };
+              }
+            }
+
+            // Get raw response text for debugging
+            const rawResponseText = await fetch(`https://api.github.com/installation/repositories`, {
+              headers: {
+                'Authorization': `Bearer ${tokenData.token}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'Claude-Code-Worker'
+              }
+            }).then(r => r.text());
+
+            response = new Response(JSON.stringify({
+              installationId,
+              tokenResponse: {
+                status: responseStatus,
+                ok: tokenResponse.ok,
+                data: tokenData,
+                error: responseText
+              },
+              repositories: {
+                count: repos.length,
+                names: repos.map((r: any) => r.full_name),
+                error: reposError,
+                rawResponse: rawResponseText
+              }
+            }, null, 2), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          } catch (error: any) {
+            response = new Response(JSON.stringify({
+              error: error.message,
+              stack: error.stack
+            }), {
+              status: 500,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        }
+      }
+
       // Installation complete redirect handler
       else if (pathname === '/install-complete') {
         logWithContext('MAIN_HANDLER', 'Installation complete redirect', {
@@ -976,7 +1069,7 @@ export default {
               const tokenData = tokenResponse.ok ? await tokenResponse.json() : null;
 
               if (tokenData?.token) {
-                const installResponse = await fetch(`https://api.github.com/user/installations/${installationId}/repositories`, {
+                const installResponse = await fetch(`https://api.github.com/installation/repositories`, {
                   headers: {
                     'Authorization': `Bearer ${tokenData.token}`,
                     'Accept': 'application/vnd.github.v3+json',

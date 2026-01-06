@@ -27,6 +27,9 @@ export async function handleGitHubStatus(_request: Request, env: any): Promise<R
         githubAppConfigured,
         claudeConfigured,
         repositoryCount,
+        appId: githubConfig?.appId || null,
+        installationId: githubConfig?.installationId || null,
+        owner: githubConfig?.owner?.login || null,
         ready: githubAppConfigured && claudeConfigured
       };
 
