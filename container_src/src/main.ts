@@ -98,6 +98,14 @@ export async function setupWorkspace(repositoryUrl: string, issueNumber: string)
     await fs.mkdir(path.dirname(workspaceDir), { recursive: true });
     logWithContext('WORKSPACE', 'Parent workspace directory created');
 
+    // Clean up existing workspace directory if it exists (from previous container request)
+    try {
+      await fs.rm(workspaceDir, { recursive: true, force: true });
+      logWithContext('WORKSPACE', 'Cleaned up existing workspace directory', { workspaceDir });
+    } catch {
+      // Ignore cleanup errors - directory might not exist
+    }
+
     const cloneStartTime = Date.now();
 
     // Get GitHub token for authenticated cloning

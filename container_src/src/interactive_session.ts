@@ -402,6 +402,16 @@ export async function handleInteractiveSession(
 
       try {
         const branch = session.repository.branch || 'main';
+        const workspacePath = `/tmp/workspace/issue-${session.id}`;
+
+        // Clean up existing workspace if it exists (container may have state from previous request)
+        try {
+          await fs.rm(workspacePath, { recursive: true, force: true });
+          logWithContext('INTERACTIVE_SESSION', 'Cleaned up existing workspace', { workspacePath });
+        } catch {
+          // Ignore cleanup errors
+        }
+
         session.workspaceDir = await setupWorkspace(session.repository.url, session.id);
         session.repository = {
           ...session.repository,
@@ -463,7 +473,8 @@ export async function handleInteractiveSession(
 
     // Get the last assistant message for DO persistence
     const lastAssistantMessage = session.conversationHistory[session.conversationHistory.length - 1];
-    const lastUserMessage = session.conversationHistory.find(m => m.role === 'user');
+    // Find the last user message (not the first one)
+    const lastUserMessage = [...session.conversationHistory].reverse().find(m => m.role === 'user');
 
     streamer.send('complete', {
       sessionId: session.id,
@@ -692,7 +703,17 @@ async function runClaudeInteractive(
 // ============================================================================
 
 function buildConversationContext(session: InteractiveSession, currentPrompt: string): string {
-  // For now, use the direct prompt without extra context to avoid hitting turn limits
+  // If we have conversation history, include it in the context
+  if (session.conversationHistory.length > 0) {
+    // Build context from previous messages (excluding the current user message which will be added separately)
+    const previousMessages = session.conversationHistory
+      .filter(m => m.role !== 'system')
+      .map(m => `${m.role.toUpperCase()}: ${m.content}`)
+      .join('\n\n');
+
+    return `PREVIOUS CONVERSATION:\n${previousMessages}\n\nCURRENT USER MESSAGE:\n${currentPrompt}`;
+  }
+
   return currentPrompt;
 }
 
