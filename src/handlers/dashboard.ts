@@ -90,6 +90,11 @@ export async function handleDashboardAPI(
     return handleGetStats(env);
   }
 
+  // GET /api/repositories - Get available repositories
+  if (pathname === '/api/repositories' && request.method === 'GET') {
+    return handleGetRepositories(env);
+  }
+
   // POST /api/test-webhook - Test webhook
   if (pathname === '/api/test-webhook' && request.method === 'POST') {
     return handleTestWebhook(request);
@@ -387,6 +392,51 @@ async function handleGetStats(env: { GITHUB_APP_CONFIG: any; ANTHROPIC_API_KEY?:
       successRate: 0,
       repositories: []
     }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+/**
+ * Get repositories
+ */
+async function handleGetRepositories(env: { GITHUB_APP_CONFIG: any }): Promise<Response> {
+  try {
+    const configDO = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
+    const configStub = (env.GITHUB_APP_CONFIG as any).get(configDO);
+
+    const configResponse = await configStub.fetch(new Request('http://internal/get'));
+    const configText = await configResponse.text();
+
+    if (!configText) {
+      return new Response(JSON.stringify([]), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    const config = JSON.parse(configText);
+
+    // Transform repositories to a simpler format
+    const repositories = (config.repositories || []).map((repo: any) => ({
+      full_name: repo.full_name || repo.name || String(repo),
+      name: repo.name || repo.full_name || String(repo),
+      owner: repo.owner?.login || repo.full_name?.split('/')[0] || 'unknown',
+      private: repo.private || false,
+      description: repo.description || '',
+      default_branch: repo.default_branch || 'main'
+    }));
+
+    logWithContext('DASHBOARD_API', 'Returning repositories', { count: repositories.length });
+
+    return new Response(JSON.stringify(repositories), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    logWithContext('DASHBOARD_API', 'Failed to fetch repositories', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+
+    return new Response(JSON.stringify([]), {
       headers: { 'Content-Type': 'application/json' }
     });
   }

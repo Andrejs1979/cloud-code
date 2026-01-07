@@ -258,16 +258,36 @@ export async function handleInteractiveSession(
         timestamp: Date.now()
       });
 
-      const branch = config.repository.branch || 'main';
-      session.workspaceDir = await setupWorkspace(config.repository.url, session.id);
-      session.repository = {
-        ...config.repository,
-        branch
-      };
+      try {
+        const branch = config.repository.branch || 'main';
+        session.workspaceDir = await setupWorkspace(config.repository.url, session.id);
+        session.repository = {
+          ...config.repository,
+          branch
+        };
 
+        streamer.send('status', {
+          message: 'Repository cloned successfully',
+          repository: config.repository.name,
+          timestamp: Date.now()
+        });
+      } catch (repoError) {
+        const errorMsg = repoError instanceof Error ? repoError.message : String(repoError);
+        // Check if it's a clone error (likely invalid repository)
+        if (errorMsg.includes('clone') || errorMsg.includes('git') || errorMsg.includes('repository')) {
+          streamer.send('error', {
+            message: `Failed to access repository "${config.repository.name}". Please verify the repository exists and you have access to it.`,
+            details: errorMsg,
+            timestamp: Date.now()
+          });
+          throw new Error(`Repository error: ${errorMsg}`);
+        }
+        throw repoError;
+      }
+    } else {
+      // No repository - run in general chat mode
       streamer.send('status', {
-        message: 'Repository cloned successfully',
-        repository: config.repository.name,
+        message: 'Starting general chat mode (no repository selected)',
         timestamp: Date.now()
       });
     }

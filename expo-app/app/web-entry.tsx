@@ -17,6 +17,16 @@ interface ChatMessage {
   isStreaming?: boolean;
 }
 
+// Repository type
+interface Repository {
+  full_name: string;
+  name: string;
+  owner: string;
+  private: boolean;
+  description: string;
+  default_branch: string;
+}
+
 // Screens
 function DashboardScreen() {
   const { stats, tasks, sessions, isLoading, refresh } = useAppStore();
@@ -87,6 +97,31 @@ function ChatScreen() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [repository, setRepository] = useState<string | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  // Repository selector state
+  const [repositories, setRepositories] = useState<Repository[]>([]);
+  const [isLoadingRepos, setIsLoadingRepos] = useState(false);
+  const [showRepoModal, setShowRepoModal] = useState(false);
+
+  // Fetch repositories on mount
+  useEffect(() => {
+    fetchRepositories();
+  }, []);
+
+  const fetchRepositories = async () => {
+    setIsLoadingRepos(true);
+    try {
+      const response = await fetch('/api/repositories');
+      if (response.ok) {
+        const data = await response.json() as Repository[];
+        setRepositories(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch repositories:', error);
+    } finally {
+      setIsLoadingRepos(false);
+    }
+  };
 
   const processSSEStream = async (response: Response) => {
     const reader = response.body?.getReader();
@@ -266,11 +301,11 @@ function ChatScreen() {
           ) : (
             <Pressable
               style={styles.repoSelector}
-              onPress={() => setRepository('owner/repo')}
+              onPress={() => setShowRepoModal(true)}
             >
               <Ionicons name="folder-outline" size={16} color={colors.mutedForeground} />
               <Text style={[styles.repoText, { color: colors.mutedForeground }]}>
-                Select repo
+                {repositories.length > 0 ? `${repositories.length} repos` : 'Select repo'}
               </Text>
             </Pressable>
           )}
@@ -368,6 +403,58 @@ function ChatScreen() {
             </Pressable>
           </View>
         </View>
+
+        {/* Repository Selector Modal */}
+        {showRepoModal && (
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Repository</Text>
+                <Pressable onPress={() => setShowRepoModal(false)}>
+                  <Ionicons name="close" size={24} color={colors.foreground} />
+                </Pressable>
+              </View>
+
+              {isLoadingRepos ? (
+                <Text style={styles.modalLoading}>Loading repositories...</Text>
+              ) : repositories.length === 0 ? (
+                <View style={styles.modalEmpty}>
+                  <Ionicons name="git-branch" size={48} color={colors.mutedForeground} />
+                  <Text style={styles.modalEmptyText}>No repositories found</Text>
+                  <Text style={styles.modalEmptySubtext}>
+                    Install the GitHub App to see your repositories here.
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView style={styles.repoList}>
+                  {repositories.map((repo) => (
+                    <Pressable
+                      key={repo.full_name}
+                      style={styles.repoItem}
+                      onPress={() => {
+                        setRepository(repo.full_name);
+                        setShowRepoModal(false);
+                      }}
+                    >
+                      <View style={styles.repoItemMain}>
+                        <Ionicons name="logo-github" size={20} color={colors.foreground} />
+                        <Text style={styles.repoItemName}>{repo.full_name}</Text>
+                        {repo.private && (
+                          <Ionicons name="lock-closed" size={14} color={colors.mutedForeground} />
+                        )}
+                      </View>
+                      {repo.description ? (
+                        <Text style={styles.repoItemDesc} numberOfLines={2}>
+                          {repo.description}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+          </View>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
@@ -682,5 +769,86 @@ const styles = StyleSheet.create({
     color: colors.mutedForeground,
     textAlign: 'center',
     paddingHorizontal: 32,
+  },
+  // Modal styles
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: '80%',
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.foreground,
+  },
+  modalLoading: {
+    padding: 24,
+    textAlign: 'center',
+    color: colors.mutedForeground,
+  },
+  modalEmpty: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  modalEmptyText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.foreground,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  modalEmptySubtext: {
+    fontSize: 14,
+    color: colors.mutedForeground,
+    textAlign: 'center',
+  },
+  repoList: {
+    maxHeight: 400,
+  },
+  repoItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  repoItemMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  repoItemName: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.foreground,
+    flex: 1,
+  },
+  repoItemDesc: {
+    fontSize: 13,
+    color: colors.mutedForeground,
+    marginTop: 4,
+    marginLeft: 28,
   },
 });
