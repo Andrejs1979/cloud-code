@@ -10,6 +10,9 @@
 	"observability": {
 		"enabled": true
 	},
+	"vars": {
+		"ENVIRONMENT": "production"
+	},
 	"assets": {
 		"directory": "expo-app/dist",
 		"binding": "DASHBOARD_ASSETS"
@@ -65,6 +68,9 @@
 		"staging": {
 			"name": "cloud-code-staging",
 			"compatibility_date": "2025-05-23",
+			"vars": {
+				"ENVIRONMENT": "staging"
+			},
 			"containers": [
 				{
 					"class_name": "MyContainer",

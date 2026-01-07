@@ -70,6 +70,7 @@ export interface Env {
   RATE_LIMIT_KV?: KVNamespace;
   ENCRYPTION_KEY?: string;
   ANTHROPIC_API_KEY?: string; // Centralized API key for the service
+  ENVIRONMENT?: string; // 'production' | 'staging' | 'development'
 }
 
 // Interactive Session State

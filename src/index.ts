@@ -9,6 +9,7 @@ import { handleInteractiveRequest } from './handlers/interactive';
 import { handleDashboardAPI, serveDashboard } from './handlers/dashboard';
 import { handleHealthCheck, handleMetrics, handlePrometheusMetrics, recordRequest, recordContainerStartup, recordContainerShutdown, getRequestCount } from './handlers/health';
 import { logWithContext } from './log';
+import { applyRateLimit, addRateLimitHeaders, checkRateLimit, getClientIdentifier, getCategoryFromPath } from './rate_limit';
 import type { GitHubAppConfig, Repository, Env, InteractiveSessionState } from './types';
 
 /**
@@ -1055,6 +1056,38 @@ export default {
       cfCountry: request.headers.get('cf-ipcountry')
     });
 
+    // Apply rate limiting (skip for OPTIONS requests and health checks)
+    let rateLimitInfo: { limit: number; remaining: number; resetAt: number } | null = null;
+    if (request.method !== 'OPTIONS' && pathname !== '/health') {
+      const identifier = getClientIdentifier(request);
+      const category = getCategoryFromPath(pathname);
+      const result = await checkRateLimit(env, identifier, category);
+
+      rateLimitInfo = {
+        limit: result.limit,
+        remaining: result.remaining,
+        resetAt: result.resetAt
+      };
+
+      if (!result.allowed) {
+        return new Response(JSON.stringify({
+          error: 'Rate limit exceeded',
+          message: result.error,
+          limit: result.limit,
+          resetAt: result.resetAt
+        }), {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-RateLimit-Limit': result.limit.toString(),
+            'X-RateLimit-Remaining': '0',
+            'X-RateLimit-Reset': result.resetAt.toString(),
+            'Retry-After': Math.ceil((result.resetAt - Date.now()) / 1000).toString()
+          }
+        });
+      }
+    }
+
     // Ensure encryption key is set in the GitHubAppConfigDO for this request
     // This is required for decrypting stored credentials
     if (env.ENCRYPTION_KEY) {
@@ -1413,66 +1446,90 @@ export default {
 
       // Container routes
       else if (pathname.startsWith('/container')) {
-        logWithContext('MAIN_HANDLER', 'Routing to basic container');
-        routeMatched = true;
-        let id = (env.MY_CONTAINER as any).idFromName('container');
-        let container = (env.MY_CONTAINER as any).get(id);
+        // Debug endpoint - only available in non-production environments
+        if (env.ENVIRONMENT === 'production') {
+          routeMatched = true;
+          response = new Response('Debug endpoints are disabled in production', { status: 404 });
+        } else {
+          logWithContext('MAIN_HANDLER', 'Routing to basic container');
+          routeMatched = true;
+          let id = (env.MY_CONTAINER as any).idFromName('container');
+          let container = (env.MY_CONTAINER as any).get(id);
 
-        // Map /container/* to container's internal routes
-        let containerPath = '/';
-        if (pathname === '/container' || pathname === '/container/') {
-          containerPath = '/container';
-        } else if (pathname.startsWith('/container/process-issue')) {
-          containerPath = '/process-issue';
-        } else if (pathname.startsWith('/container/interactive-session')) {
-          containerPath = '/interactive-session';
+          // Map /container/* to container's internal routes
+          let containerPath = '/';
+          if (pathname === '/container' || pathname === '/container/') {
+            containerPath = '/container';
+          } else if (pathname.startsWith('/container/process-issue')) {
+            containerPath = '/process-issue';
+          } else if (pathname.startsWith('/container/interactive-session')) {
+            containerPath = '/interactive-session';
+          }
+
+          const rewrittenRequest = rewriteRequestPath(request, containerPath);
+          response = await containerFetch(container, rewrittenRequest, {
+            containerName: 'container',
+            route: containerPath
+          });
         }
-
-        const rewrittenRequest = rewriteRequestPath(request, containerPath);
-        response = await containerFetch(container, rewrittenRequest, {
-          containerName: 'container',
-          route: containerPath
-        });
       }
 
       else if (pathname.startsWith('/error')) {
-        logWithContext('MAIN_HANDLER', 'Routing to error test container');
-        routeMatched = true;
-        let id = (env.MY_CONTAINER as any).idFromName('error-test');
-        let container = (env.MY_CONTAINER as any).get(id);
+        // Debug endpoint - only available in non-production environments
+        if (env.ENVIRONMENT === 'production') {
+          routeMatched = true;
+          response = new Response('Debug endpoints are disabled in production', { status: 404 });
+        } else {
+          logWithContext('MAIN_HANDLER', 'Routing to error test container');
+          routeMatched = true;
+          let id = (env.MY_CONTAINER as any).idFromName('error-test');
+          let container = (env.MY_CONTAINER as any).get(id);
 
-        // Map /error/* to container's /error endpoint
-        const rewrittenRequest = rewriteRequestPath(request, '/error');
-        response = await containerFetch(container, rewrittenRequest, {
-          containerName: 'error-test',
-          route: '/error'
-        });
+          // Map /error/* to container's /error endpoint
+          const rewrittenRequest = rewriteRequestPath(request, '/error');
+          response = await containerFetch(container, rewrittenRequest, {
+            containerName: 'error-test',
+            route: '/error'
+          });
+        }
       }
 
       else if (pathname.startsWith('/lb')) {
-        logWithContext('MAIN_HANDLER', 'Routing to load balanced containers');
-        routeMatched = true;
-        let container = await loadBalance(env.MY_CONTAINER as any, 3);
+        // Debug endpoint - only available in non-production environments
+        if (env.ENVIRONMENT === 'production') {
+          routeMatched = true;
+          response = new Response('Debug endpoints are disabled in production', { status: 404 });
+        } else {
+          logWithContext('MAIN_HANDLER', 'Routing to load balanced containers');
+          routeMatched = true;
+          let container = await loadBalance(env.MY_CONTAINER as any, 3);
 
-        // Map /lb to container's health endpoint
-        const rewrittenRequest = rewriteRequestPath(request, '/container');
-        response = await containerFetch(container, rewrittenRequest, {
-          containerName: 'load-balanced',
-          route: '/container'
-        });
+          // Map /lb to container's health endpoint
+          const rewrittenRequest = rewriteRequestPath(request, '/container');
+          response = await containerFetch(container, rewrittenRequest, {
+            containerName: 'load-balanced',
+            route: '/container'
+          });
+        }
       }
 
       else if (pathname.startsWith('/singleton')) {
-        logWithContext('MAIN_HANDLER', 'Routing to singleton container');
-        routeMatched = true;
-        const container = getContainer(env.MY_CONTAINER as any);
+        // Debug endpoint - only available in non-production environments
+        if (env.ENVIRONMENT === 'production') {
+          routeMatched = true;
+          response = new Response('Debug endpoints are disabled in production', { status: 404 });
+        } else {
+          logWithContext('MAIN_HANDLER', 'Routing to singleton container');
+          routeMatched = true;
+          const container = getContainer(env.MY_CONTAINER as any);
 
-        // Map /singleton to container's health endpoint
-        const rewrittenRequest = rewriteRequestPath(request, '/container');
-        response = await containerFetch(container, rewrittenRequest, {
-          containerName: 'singleton',
-          route: '/container'
-        });
+          // Map /singleton to container's health endpoint
+          const rewrittenRequest = rewriteRequestPath(request, '/container');
+          response = await containerFetch(container, rewrittenRequest, {
+            containerName: 'singleton',
+            route: '/container'
+          });
+        }
       }
 
       // Interactive mode endpoints
@@ -1501,20 +1558,21 @@ export default {
       else {
         logWithContext('MAIN_HANDLER', 'Serving home page');
         routeMatched = true;
+        const isProduction = env.ENVIRONMENT === 'production';
+        const debugSection = isProduction ? '' : `
+Container Testing Routes:
+- /container - Basic container health check
+- /lb - Load balancing over multiple containers
+- /error - Test error handling
+- /singleton - Single container instance
+`;
         response = new Response(`
 🤖 Claude Code Container Integration
 
 Setup Instructions:
 1. Configure Claude Code: /claude-setup
 2. Setup GitHub Integration: /gh-setup
-
-Container Testing Routes:
-- /container - Basic container health check
-- /lb - Load balancing over multiple containers
-- /error - Test error handling
-- /singleton - Single container instance
-
-Interactive Mode:
+${debugSection}Interactive Mode:
 - POST /interactive/start - Start an interactive Claude Code session
 - GET /interactive/status?sessionId={id} - Check session status
 - DELETE /interactive/{sessionId} - End a session
@@ -1532,6 +1590,14 @@ Once both setups are complete, create GitHub issues to trigger automatic Claude 
       const responseHeaders = new Headers(response.headers);
       responseHeaders.set('X-Response-Time', `${processingTime}ms`);
       responseHeaders.set('X-Request-Count', getRequestCount().toString());
+
+      // Add rate limit headers if available
+      if (rateLimitInfo) {
+        responseHeaders.set('X-RateLimit-Limit', rateLimitInfo.limit.toString());
+        responseHeaders.set('X-RateLimit-Remaining', rateLimitInfo.remaining.toString());
+        responseHeaders.set('X-RateLimit-Reset', rateLimitInfo.resetAt.toString());
+      }
+
       response = new Response(response.body, {
         status: response.status,
         statusText: response.statusText,
