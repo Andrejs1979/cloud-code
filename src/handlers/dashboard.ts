@@ -13,6 +13,7 @@ export interface DashboardStats {
   activeSessions: number;
   successRate: number;
   repositories: string[];
+  claudeKeyConfigured?: boolean;
 }
 
 export interface Task {
@@ -102,11 +103,11 @@ export async function handleDashboardAPI(
 }
 
 /**
- * Serve dashboard static files
+ * Serve dashboard static files (Expo Web app)
  *
  * Uses Cloudflare Workers Assets binding to serve static files.
  * The assets binding automatically handles:
- * - File serving from the dashboard directory
+ * - File serving from the expo-app/dist directory
  * - MIME type detection
  * - Global caching
  *
@@ -124,33 +125,29 @@ export async function serveDashboard(
   // If assets binding is available, delegate static file serving to it
   if (env?.DASHBOARD_ASSETS) {
     try {
-      // The assets directory structure: dashboard/index.html, dashboard/app.js, etc.
-      // URL paths come in as: /dashboard/, /dashboard/app.js, /dashboard/manifest.json
-      //
-      // We need to map:
-      // /dashboard/ or /dashboard -> index.html
-      // /dashboard/app.js -> app.js
-      // /dashboard/manifest.json -> manifest.json
-      // etc.
-
       let assetPath = pathname;
 
-      // Remove /dashboard prefix to get the relative path
-      if (pathname.startsWith('/dashboard/')) {
-        assetPath = pathname.substring('/dashboard/'.length);
-      } else if (pathname === '/dashboard') {
-        assetPath = '';
+      // Handle Expo app paths
+      // Root path or /dashboard/ -> index.html
+      if (pathname === '/' || pathname === '/dashboard' || pathname === '/dashboard/') {
+        assetPath = '/index.html';
       }
-
-      // Default to index.html for root or directory-like paths
-      if (!assetPath || assetPath.endsWith('/') || !assetPath.includes('.')) {
-        assetPath = 'index.html';
+      // Remove /dashboard prefix for backward compatibility
+      else if (pathname.startsWith('/dashboard/')) {
+        assetPath = pathname.substring('/dashboard/'.length - 1); // Keep leading slash
+      }
+      // _expo and assets paths are already correct
+      else if (pathname.startsWith('/_expo/') || pathname.startsWith('/assets/')) {
+        assetPath = pathname;
+      }
+      // For any other path (SPA routing), serve index.html
+      else {
+        assetPath = '/index.html';
       }
 
       // Create a new request with the mapped asset path
-      // The assets binding serves files relative to the dashboard directory
-      // IMPORTANT: Use just the origin + asset path, not the full URL
-      const assetUrl = new URL(url.origin + '/' + assetPath);
+      // The assets binding serves files from expo-app/dist at root
+      const assetUrl = new URL(url.origin + assetPath);
       const assetRequest = new Request(assetUrl.toString(), {
         method: request.method,
         headers: request.headers,
@@ -160,17 +157,18 @@ export async function serveDashboard(
         duplex: 'half'
       });
 
-      logWithContext('DASHBOARD_STATIC', 'Fetching asset', { originalPath: pathname, assetPath, assetUrl: assetUrl.toString() });
+      logWithContext('DASHBOARD_STATIC', 'Fetching asset', { originalPath: pathname, assetPath });
 
       const assetResponse = await env.DASHBOARD_ASSETS.fetch(assetRequest);
 
-      // If asset found (status 200), return it with CORS headers
+      // If asset found (status 200), return it with appropriate headers
       if (assetResponse.ok) {
-        // Add CORS headers for PWA
         const headers = new Headers(assetResponse.headers);
+        // Add CORS headers
         headers.set('Access-Control-Allow-Origin', '*');
-        headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
-        headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+        // Remove conflicting COOP/COEP headers that can break shared array buffer
+        headers.delete('Cross-Origin-Embedder-Policy');
+        headers.delete('Cross-Origin-Opener-Policy');
 
         return new Response(assetResponse.body, {
           status: assetResponse.status,
@@ -178,14 +176,18 @@ export async function serveDashboard(
         });
       }
 
-      // If asset not found and it might be an SPA route, serve index.html
-      if (!assetPath.endsWith('.html') && !assetPath.endsWith('.js') && !assetPath.endsWith('.json')) {
+      // If asset not found, try index.html for SPA routes
+      if (assetPath !== '/index.html') {
         const indexRequest = new Request(new URL(url.origin + '/index.html').toString(), request);
         const indexResponse = await env.DASHBOARD_ASSETS.fetch(indexRequest);
         if (indexResponse.ok) {
+          const headers = new Headers(indexResponse.headers);
+          headers.set('Access-Control-Allow-Origin', '*');
+          headers.delete('Cross-Origin-Embedder-Policy');
+          headers.delete('Cross-Origin-Opener-Policy');
           return new Response(indexResponse.body, {
             status: indexResponse.status,
-            headers: indexResponse.headers
+            headers
           });
         }
       }
@@ -323,7 +325,7 @@ async function handleGetIssues(env: { GITHUB_APP_CONFIG: any }): Promise<Respons
 /**
  * Get statistics
  */
-async function handleGetStats(env: { GITHUB_APP_CONFIG: any }): Promise<Response> {
+async function handleGetStats(env: { GITHUB_APP_CONFIG: any; ANTHROPIC_API_KEY?: string }): Promise<Response> {
   try {
     const configDO = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
     const configStub = (env.GITHUB_APP_CONFIG as any).get(configDO);
@@ -364,7 +366,8 @@ async function handleGetStats(env: { GITHUB_APP_CONFIG: any }): Promise<Response
       processedIssues: totalWebhooks,
       activeSessions: sessions.size,
       successRate: totalWebhooks > 0 ? 95 : 0,
-      repositories
+      repositories,
+      claudeKeyConfigured: !!env.ANTHROPIC_API_KEY && env.ANTHROPIC_API_KEY.length > 0
     };
 
     logWithContext('DASHBOARD_API', 'Returning stats', dashboardStats);

@@ -11,12 +11,8 @@
 		"enabled": true
 	},
 	"assets": {
-		"directory": "dashboard",
-		"binding": "DASHBOARD_ASSETS",
-		"routing": {
-			"include": ["/*"],
-			"exclude": ["/"]
-		}
+		"directory": "expo-app/dist",
+		"binding": "DASHBOARD_ASSETS"
 	},
 	"containers": [
 		{
@@ -100,12 +96,8 @@
 				}
 			],
 			"assets": {
-				"directory": "dashboard",
-				"binding": "DASHBOARD_ASSETS",
-				"routing": {
-					"include": ["/*"],
-					"exclude": ["/"]
-				}
+				"directory": "expo-app/dist",
+				"binding": "DASHBOARD_ASSETS"
 			}
 		}
 	}

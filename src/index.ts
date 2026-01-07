@@ -1402,18 +1402,19 @@ export default {
         response = await handleInteractiveRequest(request, env);
       }
 
-      // Dashboard static files
-      else if (pathname.startsWith('/dashboard/')) {
-        logWithContext('MAIN_HANDLER', 'Routing to dashboard static files');
-        routeMatched = true;
-        response = await serveDashboard(request, env);
-      }
-
-      // Dashboard API endpoints
+      // Dashboard API endpoints - must come before static files
       else if (pathname.startsWith('/api/')) {
         logWithContext('MAIN_HANDLER', 'Routing to dashboard API');
         routeMatched = true;
         response = await handleDashboardAPI(request, env);
+      }
+
+      // Dashboard static files (Expo app)
+      // Serve from root path for Expo SPA, keep /dashboard for backward compatibility
+      else if (pathname === '/' || pathname.startsWith('/_expo/') || pathname.startsWith('/assets/') || pathname.startsWith('/dashboard/')) {
+        logWithContext('MAIN_HANDLER', 'Routing to dashboard static files');
+        routeMatched = true;
+        response = await serveDashboard(request, env);
       }
 
       // Default home page
