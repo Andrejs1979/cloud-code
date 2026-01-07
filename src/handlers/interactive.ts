@@ -6,6 +6,7 @@
 
 import { logWithContext } from '../log';
 import { containerFetch, getRouteFromRequest } from '../fetch';
+import { ensureDOEncryptionKey } from '../index';
 import type { Env, InteractiveSessionState } from '../types';
 
 // ============================================================================
@@ -98,6 +99,12 @@ export async function handleStartInteractiveSession(
     if (body.repository) {
       const githubConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
       const githubConfigDO = (env.GITHUB_APP_CONFIG as any).get(githubConfigId);
+
+      // Ensure encryption key is set before attempting to decrypt credentials
+      if (env.ENCRYPTION_KEY) {
+        await ensureDOEncryptionKey(githubConfigDO, env.ENCRYPTION_KEY);
+      }
+
       const tokenResponse = await githubConfigDO.fetch(new Request('http://internal/get-installation-token'));
       const tokenData = tokenResponse.ok ? await tokenResponse.json() as { token: string | null } : null;
       githubToken = tokenData?.token || undefined;

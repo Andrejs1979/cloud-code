@@ -6,8 +6,8 @@ export interface GitHubAppManifest {
     url: string;
   };
   redirect_url: string;
-  callback_urls: string[];
-  setup_url: string;
+  callback_url: string;
+  setup_url?: string;
   public: boolean;
   default_permissions: {
     contents: string;

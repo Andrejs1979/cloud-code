@@ -1,73 +1,81 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#0d1117">
+  <meta name="theme-color" content="#09090b">
   <title>Claude Code Container - Pipeline</title>
   <link rel="manifest" href="/dashboard/manifest.json">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2358a6ff'><path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15c0 1.65-1.35 3-3 3s-3-1.35-3-3c0-1.5.45-2.1 1.17-2.83l-.9-.92C10.05 9.55 9 11.15 9 13c0 2.76 2.24 5 5 5 1.85 0 3.45-1.05 4.07-2.17z'/></svg>">
-  <link rel="stylesheet" href="/dashboard/output.css">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236366f1'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
+  <link rel="stylesheet" href="/dashboard/styles.css">
 </head>
-<body class="safe-top">
-  <div id="app" class="min-h-screen pb-20">
+<body class="bg-background text-foreground font-sans antialiased min-h-screen safe-top">
+  <div id="app" class="flex flex-col min-h-screen pb-safe">
     <!-- Header -->
-    <header class="sticky top-0 z-30 bg-[#0d1117]/95 backdrop-blur border-b border-[#30363d] px-4 py-3">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <svg class="w-8 h-8 text-[#58a6ff]" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15c0 1.65-1.35 3-3 3s-3-1.35-3-3c0-1.5.45-2.1 1.17-2.83l-.9-.92C10.05 9.55 9 11.15 9 13c0 2.76 2.24 5 5 5 1.85 0 3.45-1.05 4.07-2.17z"/>
-        </svg>
-        <h1 class="text-lg font-semibold">Claude Pipeline</h1>
+    <header class="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div class="flex h-14 items-center px-4 max-w-screen-xl mx-auto">
+        <div class="flex items-center gap-2">
+          <svg class="h-6 w-6 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+          <h1 class="font-semibold text-lg">Claude Pipeline</h1>
+        </div>
+        <div class="ml-auto flex items-center gap-2">
+          <button id="refreshBtn" class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9">
+            <svg id="refreshIcon" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            <svg id="loadingIcon" class="h-4 w-4 animate-spin hidden" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </button>
+        </div>
       </div>
-      <button id="refreshBtn" class="p-2 rounded-lg hover:bg-[#30363d]">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-        </svg>
-      </button>
-    </div>
-  </header>
+    </header>
 
     <!-- Main Content -->
-    <main id="mainContent" class="px-4 py-4">
+    <main id="mainContent" class="flex-1 px-4 py-4 max-w-screen-xl mx-auto w-full">
       <!-- Views will be injected here -->
     </main>
 
     <!-- FAB for quick actions -->
-    <button id="fab" class="fab" onclick="app.showNewSessionModal()">
-      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-      </svg>
+    <button id="fab" class="fixed bottom-20 right-4 z-40 hidden rounded-full shadow-lg transition-all hover:scale-105 active:scale-95">
+      <div class="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-offset-background transition-all hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+      </div>
     </button>
 
     <!-- Bottom Navigation -->
-    <nav class="bottom-nav">
-      <div class="flex justify-around py-2">
-        <button class="nav-item active flex flex-col items-center py-2 px-4" data-view="dashboard" onclick="app.navigate('dashboard')">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <nav class="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pb-safe">
+      <div class="flex h-16 items-center justify-around max-w-screen-xl mx-auto">
+        <button class="nav-item group flex flex-col items-center justify-center gap-1 flex-1 h-full data-[active=true]:text-primary data-[active=false]:text-muted-foreground transition-colors" data-view="dashboard" data-active="true">
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7-7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 001 1h3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
           </svg>
-          <span class="text-xs mt-1">Pipeline</span>
+          <span class="text-[10px] font-medium">Pipeline</span>
         </button>
-        <button class="nav-item flex flex-col items-center py-2 px-4" data-view="sessions" onclick="app.navigate('sessions')">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <button class="nav-item group flex flex-col items-center justify-center gap-1 flex-1 h-full data-[active=true]:text-primary data-[active=false]:text-muted-foreground transition-colors" data-view="sessions" data-active="false">
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 4.03 9 8z"/>
           </svg>
-          <span class="text-xs mt-1">Chat</span>
+          <span class="text-[10px] font-medium">Chat</span>
         </button>
-        <button class="nav-item flex flex-col items-center py-2 px-4" data-view="issues" onclick="app.navigate('issues')">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <button class="nav-item group flex flex-col items-center justify-center gap-1 flex-1 h-full data-[active=true]:text-primary data-[active=false]:text-muted-foreground transition-colors" data-view="issues" data-active="false">
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
           </svg>
-          <span class="text-xs mt-1">Issues</span>
+          <span class="text-[10px] font-medium">Issues</span>
         </button>
-        <button class="nav-item flex flex-col items-center py-2 px-4" data-view="settings" onclick="app.navigate('settings')">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <button class="nav-item group flex flex-col items-center justify-center gap-1 flex-1 h-full data-[active=true]:text-primary data-[active=false]:text-muted-foreground transition-colors" data-view="settings" data-active="false">
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 2.924 0 1.492 1.08 2.748 2.286 2.872 1.716 1.08 3.228.924 3.228.924 1.492 0 2.748-1.08 2.872-2.286.924-1.716-1.08-3.228-.924-3.228-.924-1.492 0-2.748 1.08-2.872 2.286-.924 1.716 1.08 3.228.924 3.228.924 1.492 0 2.748-1.08 2.872-2.286.924-1.716-1.08-3.228-.924-3.228-.924-1.492 0-2.748 1.08-2.872 2.286-.924 1.716 1.08 3.228.924 3.228.924"/>
           </svg>
-          <span class="text-xs mt-1">Settings</span>
+          <span class="text-[10px] font-medium">Settings</span>
         </button>
       </div>
     </nav>
@@ -75,6 +83,9 @@
 
   <!-- Modal Container -->
   <div id="modalContainer" class="hidden"></div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="fixed top-16 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
 
   <script src="/dashboard/app.js"></script>
 </body>

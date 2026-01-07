@@ -3,12 +3,12 @@
  * Provides offline capability and caching
  */
 
-const CACHE_NAME = 'claude-pipeline-v2';
+const CACHE_NAME = 'claude-pipeline-v3';
 const urlsToCache = [
   '/dashboard/',
   '/dashboard/index.html',
   '/dashboard/app.js',
-  '/dashboard/output.css',
+  '/dashboard/styles.css',
   '/dashboard/manifest.json',
 ];
 

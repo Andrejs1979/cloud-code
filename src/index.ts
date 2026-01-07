@@ -2,7 +2,7 @@ import { Container, loadBalance, getContainer } from '@cloudflare/containers';
 import { decrypt, generateInstallationToken } from './crypto';
 import { containerFetch, getRouteFromRequest } from './fetch';
 import { handleOAuthCallback } from './handlers/oauth_callback';
-import { handleGitHubSetup } from './handlers/github_setup';
+import { handleGitHubSetup, handleReEncryptPage, handleReEncrypt, handleClearConfig } from './handlers/github_setup';
 import { handleGitHubStatus } from './handlers/github_status';
 import { handleGitHubWebhook } from './handlers/github_webhook';
 import { handleInteractiveRequest } from './handlers/interactive';
@@ -247,6 +247,15 @@ export class GitHubAppConfigDO {
     if (url.pathname === '/get-webhook-stats' && request.method === 'GET') {
       const stats = await this.getWebhookStats();
       return new Response(JSON.stringify(stats));
+    }
+
+    if (url.pathname === '/delete' && request.method === 'POST') {
+      logWithContext('DURABLE_OBJECT', 'Deleting app config');
+      // Clear the config by deleting the row
+      this.storage.sql.exec('DELETE FROM github_app_config WHERE id = 1');
+      // Also clear cached installation tokens
+      this.storage.sql.exec('DELETE FROM installation_tokens');
+      return new Response('OK');
     }
 
     logWithContext('DURABLE_OBJECT', 'Unknown endpoint requested', {
@@ -562,7 +571,7 @@ export class GitHubAppConfigDO {
  * Durable Objects don't persist instance variables across restarts, so we need
  * to re-set the encryption key after each worker restart.
  */
-async function ensureDOEncryptionKey(doStub: DurableObjectStub, encryptionKey: string): Promise<void> {
+export async function ensureDOEncryptionKey(doStub: DurableObjectStub, encryptionKey: string): Promise<void> {
   await doStub.fetch(new Request('http://internal/set-encryption-key', {
     method: 'POST',
     body: JSON.stringify({ encryptionKey })
@@ -836,6 +845,89 @@ export class MyContainer extends Container {
       }
     }
 
+    // Handle interactive-session requests by setting environment variables
+    if (url.pathname === '/interactive-session' && request.method === 'POST') {
+      logWithContext('CONTAINER', 'Processing interactive session request');
+
+      try {
+        const sessionConfig = await request.json() as Record<string, any>;
+
+        logWithContext('CONTAINER', 'Session config received', {
+          sessionId: sessionConfig.sessionId,
+          hasRepository: !!sessionConfig.repository,
+          hasGithubToken: !!sessionConfig.githubToken,
+          hasApiKey: !!sessionConfig.anthropicApiKey
+        });
+
+        // Set environment variables for this container instance
+        const envMap: Record<string, string> = {
+          ANTHROPIC_API_KEY: sessionConfig.anthropicApiKey || '',
+          GITHUB_TOKEN: sessionConfig.githubToken || '',
+          SESSION_ID: sessionConfig.sessionId || '',
+          PROMPT: sessionConfig.prompt || '',
+        };
+
+        // Add repository info if provided
+        if (sessionConfig.repository) {
+          envMap.REPOSITORY_URL = sessionConfig.repository.url || '';
+          envMap.REPOSITORY_NAME = sessionConfig.repository.name || '';
+          envMap.REPOSITORY_BRANCH = sessionConfig.repository.branch || 'main';
+        }
+
+        // Add options as env vars
+        if (sessionConfig.options) {
+          if (sessionConfig.options.maxTurns) envMap.MAX_TURNS = String(sessionConfig.options.maxTurns);
+          if (sessionConfig.options.permissionMode) envMap.PERMISSION_MODE = sessionConfig.options.permissionMode;
+          if (sessionConfig.options.createPR !== undefined) envMap.CREATE_PR = String(sessionConfig.options.createPR);
+        }
+
+        // Set the environment variables on the container
+        let envVarsSet = 0;
+        Object.entries(envMap).forEach(([key, value]) => {
+          if (typeof value === 'string' && value) {
+            this.envVars[key] = value;
+            envVarsSet++;
+          }
+        });
+
+        logWithContext('CONTAINER', 'Environment variables set for interactive session', {
+          envVarsSet,
+          totalEnvVars: Object.keys(envMap).length
+        });
+
+        logWithContext('CONTAINER', 'Forwarding interactive session request to container');
+
+        // Create a new request with the JSON data
+        const newRequest = new Request(request.url, {
+          method: request.method,
+          headers: request.headers,
+          body: JSON.stringify(sessionConfig)
+        });
+
+        const response = await super.fetch(newRequest);
+
+        logWithContext('CONTAINER', 'Interactive session container response received', {
+          status: response.status,
+          statusText: response.statusText
+        });
+
+        return response;
+      } catch (error) {
+        logWithContext('CONTAINER', 'Error processing interactive session request', {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        });
+
+        return new Response(JSON.stringify({
+          error: 'Failed to process interactive session',
+          message: (error as Error).message
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
     // For all other requests, use default behavior
     logWithContext('CONTAINER', 'Using default container behavior');
     return super.fetch(request);
@@ -912,6 +1004,26 @@ export default {
         logWithContext('MAIN_HANDLER', 'Routing to OAuth callback');
         routeMatched = true;
         response = await handleOAuthCallback(request, url, env);
+      }
+
+      // Re-encrypt credentials endpoint (for when ENCRYPTION_KEY changes)
+      else if (pathname === '/gh-setup/re-encrypt' && request.method === 'GET') {
+        logWithContext('MAIN_HANDLER', 'Serving re-encrypt page');
+        routeMatched = true;
+        response = await handleReEncryptPage();
+      }
+
+      else if (pathname === '/gh-setup/re-encrypt' && request.method === 'POST') {
+        logWithContext('MAIN_HANDLER', 'Processing re-encrypt request');
+        routeMatched = true;
+        response = await handleReEncrypt(request, env);
+      }
+
+      // Clear GitHub App configuration
+      else if (pathname === '/gh-setup/clear' && request.method === 'POST') {
+        logWithContext('MAIN_HANDLER', 'Clearing GitHub App configuration');
+        routeMatched = true;
+        response = await handleClearConfig(env);
       }
 
       // Status endpoint to check stored configurations
