@@ -143,6 +143,8 @@ function ChatScreen() {
     };
     setMessages((prev) => [...prev, streamingMessage]);
 
+    let currentEventType = ''; // Track the current SSE event type
+
     while (true) {
       const { done, value } = await reader.read();
 
@@ -163,7 +165,8 @@ function ChatScreen() {
 
       for (const line of lines) {
         if (line.startsWith('event:')) {
-          const eventType = line.substring(7).trim();
+          // Store the event type for the next data line
+          currentEventType = line.substring(7).trim();
           continue;
         }
 
@@ -175,7 +178,8 @@ function ChatScreen() {
           try {
             const parsed = JSON.parse(data);
 
-            if (parsed.type === 'claude_delta') {
+            // Handle based on SSE event type (not data.type)
+            if (currentEventType === 'claude_delta') {
               // Append content to current message
               assistantContent += parsed.content || '';
               setMessages((prev) =>
@@ -185,10 +189,10 @@ function ChatScreen() {
                     : m
                 )
               );
-            } else if (parsed.type === 'complete') {
+            } else if (currentEventType === 'complete') {
               // Session complete
               break;
-            } else if (parsed.type === 'error') {
+            } else if (currentEventType === 'error') {
               // Error occurred
               assistantContent += `\n\nError: ${parsed.message || 'Unknown error'}`;
               setMessages((prev) =>
