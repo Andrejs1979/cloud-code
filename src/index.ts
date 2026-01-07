@@ -1444,6 +1444,32 @@ export default {
         response = await handlePrometheusMetrics(request);
       }
 
+      // Debug endpoint to inspect env (non-production only)
+      else if (pathname === '/debug-env') {
+        if (env.ENVIRONMENT === 'production') {
+          routeMatched = true;
+          response = new Response('Debug endpoints are disabled in production', { status: 404 });
+        } else {
+          logWithContext('MAIN_HANDLER', 'Debug env inspection');
+          routeMatched = true;
+          const envInfo = {
+            hasAnthropicKey: 'ANTHROPIC_API_KEY' in env,
+            anthropicKeyTruthy: !!env.ANTHROPIC_API_KEY,
+            anthropicKeyPrefix: env.ANTHROPIC_API_KEY ? String(env.ANTHROPIC_API_KEY).substring(0, 10) + '...' : 'none',
+            hasEncryptionKey: 'ENCRYPTION_KEY' in env,
+            encryptionKeyTruthy: !!env.ENCRYPTION_KEY,
+            hasRateLimitKV: 'RATE_LIMIT_KV' in env,
+            hasMyContainer: 'MY_CONTAINER' in env,
+            hasGitHubConfig: 'GITHUB_APP_CONFIG' in env,
+            environment: env.ENVIRONMENT,
+            allKeys: Object.keys(env)
+          };
+          response = new Response(JSON.stringify(envInfo, null, 2), {
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
+
       // Container routes
       else if (pathname.startsWith('/container')) {
         // Debug endpoint - only available in non-production environments

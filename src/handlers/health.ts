@@ -91,7 +91,7 @@ const metrics: MetricsData = {
 };
 
 const deploymentStartTime = Date.now();
-const VERSION = '1.0.0';
+const VERSION = '1.0.2';
 const ENVIRONMENT = (typeof process !== 'undefined' && process.env?.ENVIRONMENT) || 'production';
 
 // ============================================================================
