@@ -22,6 +22,8 @@ export const STORAGE_KEYS = {
   SELECTED_REPOS: 'selected_repos',
   NOTIFICATION_PREFS: 'notification_prefs',
   THEME_PREF: 'theme_preference',
+  BIOMETRIC_ENABLED: 'biometric_enabled',
+  OFFLINE_MODE_ENABLED: 'offline_mode_enabled',
 
   // Offline state
   OFFLINE_QUEUE: 'offline_queue',
@@ -287,6 +289,24 @@ export const cacheStorage = {
       STORAGE_KEYS.CACHED_STATS,
     ]);
   },
+
+  getCacheSize: async (): Promise<number> => {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      let totalSize = 0;
+      for (const key of keys) {
+        if (key.startsWith('cached_') || key.includes('cache')) {
+          const raw = await AsyncStorage.getItem(key);
+          if (raw) {
+            totalSize += raw.length;
+          }
+        }
+      }
+      return totalSize;
+    } catch {
+      return 0;
+    }
+  },
 };
 
 /**
@@ -323,6 +343,32 @@ export const settingsStorage = {
 
   getTheme: async (): Promise<'light' | 'dark' | 'system'> => {
     return (await storage.get<'light' | 'dark' | 'system'>(STORAGE_KEYS.THEME_PREF)) || 'system';
+  },
+
+  saveBiometricEnabled: async (enabled: boolean): Promise<void> => {
+    await storage.set(STORAGE_KEYS.BIOMETRIC_ENABLED, enabled);
+  },
+
+  getBiometricEnabled: async (): Promise<boolean> => {
+    return (await storage.get<boolean>(STORAGE_KEYS.BIOMETRIC_ENABLED)) ?? false;
+  },
+
+  saveOfflineModeEnabled: async (enabled: boolean): Promise<void> => {
+    await storage.set(STORAGE_KEYS.OFFLINE_MODE_ENABLED, enabled);
+  },
+
+  getOfflineModeEnabled: async (): Promise<boolean> => {
+    return (await storage.get<boolean>(STORAGE_KEYS.OFFLINE_MODE_ENABLED)) ?? false;
+  },
+
+  clearAllSettings: async (): Promise<void> => {
+    await storage.multiRemove([
+      STORAGE_KEYS.SELECTED_REPOS,
+      STORAGE_KEYS.NOTIFICATION_PREFS,
+      STORAGE_KEYS.THEME_PREF,
+      STORAGE_KEYS.BIOMETRIC_ENABLED,
+      STORAGE_KEYS.OFFLINE_MODE_ENABLED,
+    ]);
   },
 };
 
