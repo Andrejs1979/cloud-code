@@ -151,31 +151,53 @@ This test scenario validates the end-to-end user experience for:
 
 ## Competitive Analysis (v3.2.0)
 
-| Product | Interface | Multi-repo | GitHub Integration | Price | Claude Model |
-|---------|-----------|------------|-------------------|-------|--------------|
-| **Cloud Code** (this) | Web ✅ | ✅ Parallel (up to 3) | ✅ GitHub App Native | TBD | ✅ Any API |
-| Claude Code (Anthropic) | CLI | ❌ Single | Manual git clone | $8/mo | ✅ Claude Only |
-| **Kilo** | CLI / Web | ❌ Single | Git-based | $20/mo | ✅ Custom |
-| **Clio** | CLI | ❌ Single | Git-based | €10/mo | ✅ Custom |
-| GitHub Copilot | IDE Plugin | ❌ | ✅ Native | $10-20/mo | ❌ OpenAI |
-| Cursor AI | IDE | ❌ | ✅ | $20/mo | ✅ Claude/GPT-4 |
-| Continue.dev | IDE | ❌ | Manual | Free | ✅ Any |
+| Product | Where Code Runs | Interface | Multi-repo | GitHub | Setup |
+|---------|-----------------|-----------|------------|--------|-------|
+| **Cloud Code** (this) | ☁️ **Cloudflare Containers** | Web ✅ | ✅ Parallel | ✅ GitHub App | **Zero install** |
+| Claude Code (Anthropic) | 💻 Your machine | CLI | ❌ Single | Manual | Node + CLI + git |
+| **Kilo** | 💻 Your machine | CLI / Web | ❌ Single | Git-based | Local install |
+| **Clio** | 💻 Your machine | CLI | ❌ Single | Git-based | Local install |
+| GitHub Copilot | 💻 Your IDE | IDE Plugin | ❌ | ✅ | VS Code / Jetbrains |
+| Cursor AI | 💻 Your IDE | IDE | ❌ | ✅ | VS Code install |
+| Continue.dev | 💻 Your IDE | IDE | ❌ | Manual | VS Code install |
+
+### 🚀 Primary USP: Remote-First Execution
+
+**Cloud Code is the ONLY Claude Code interface that runs entirely in the cloud.**
+
+**Why this matters:**
+- **Zero local setup** - No Node.js, no CLI, no git configuration
+- **Works from any device** - iPad, phone, work computer, Chromebook
+- **No "it works on my machine"** - Code executes where it deploys
+- **Enterprise-friendly** - No software installation policy violations
+- **No local resource usage** - No GPU, no RAM, no battery drain
+- **Consistent environment** - Cloudflare Workers environment, every time
+
+| Requirement | Cloud Code | Others |
+|-------------|-------------|--------|
+| Installation | ❌ None | ✅ Required |
+| Local Node.js | ❌ None | ✅ Required |
+| Local git clone | ❌ None | ✅ Required |
+| Works on iPad | ✅ Yes | ❌ No |
+| Works at work | ✅ Yes | ⚠️ Maybe (policy) |
+| Battery drain | ❌ None | ✅ Yes (local compute) |
 
 ### Key Differentiators
 
 **What only Cloud Code has:**
-1. **Multi-repo parallel processing** - Process 2-3 repos simultaneously (Kilo/Clio/Claude Code: single only)
-2. **Web-based Claude Code interface** - No CLI required (Anthropic: terminal only)
-3. **GitHub App native integration** - One-click repo connection (others: manual git setup)
+1. **☁️ Remote execution by default** - Code runs in Cloudflare Containers (PRIMARY USP)
+2. **Multi-repo parallel processing** - Process 2-3 repos simultaneously
+3. **GitHub App native integration** - One-click repo connection
 4. **Custom Claude API endpoints** - Use any Anthropic-compatible API
 5. **Real-time streaming in browser** - Watch Claude work in real-time
+6. **Device-agnostic** - Works on tablets, phones, locked-down devices
 
-**Competitive advantages vs. each:**
-- **vs. Claude Code:** Web UI + Multi-repo parallel
-- **vs. Kilo:** Parallel processing + Web interface
-- **vs. Clio:** GitHub App integration + Web UI
-- **vs. Copilot:** Uses Claude (better at reasoning) + Multi-rebo
-- **vs. Cursor:** Web-based (no IDE required) + Parallel processing
+**Competitive advantages:**
+- **vs. Claude Code:** Remote execution + Web UI + Multi-repo (no local install)
+- **vs. Kilo:** Cloud execution + Parallel + No local setup
+- **vs. Clio:** Cloud execution + GitHub App + Web UI
+- **vs. Copilot:** Remote + Claude (better reasoning) + Multi-repo
+- **vs. Cursor:** Cloud-based + No IDE required + Parallel
 
 ---
 
