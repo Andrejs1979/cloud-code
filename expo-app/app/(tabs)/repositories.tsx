@@ -201,7 +201,11 @@ function RepositoriesScreenContent() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      const response = await fetch('/api/repositories/refresh', { method: 'POST' });
+      // Check if test mode is enabled
+      const isTestMode = typeof window !== 'undefined' &&
+        new URL(window.location.href).searchParams.get('test') === 'true';
+      const testParam = isTestMode ? '?test=true' : '';
+      const response = await fetch(`/api/repositories/refresh${testParam}`, { method: 'POST' });
       if (response.ok) {
         await refresh();
       } else {

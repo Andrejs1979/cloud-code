@@ -419,12 +419,21 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
+    position: 'relative',
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   modalContent: {
-    width: '100%',
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: '-50%' }, { translateY: '-50%' }],
+    width: '90%',
     maxWidth: 450,
     maxHeight: '80%',
     backgroundColor: colors.card,
@@ -452,14 +461,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: colors.foreground,
-  },
-  modalBackdrop: {
-    width: '100%',
-    height: '100%',
-  },
-  modalPressable: {
-    width: '100%',
-    height: '100%',
   },
   modalActions: {
     flexDirection: 'row',
@@ -644,82 +645,82 @@ function RepositoryModal({
       onRequestClose={onClose}
     >
       <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
-        <Pressable style={styles.modalBackdrop} onPress={onClose}>
-          <Animated.View
-            style={[styles.modalContent, { transform: [{ scale: scaleAnim }] }]}
-          >
-            <Pressable style={styles.modalPressable} onPress={(e) => e.stopPropagation()}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Repositories</Text>
-                <Pressable onPress={onClose} style={styles.modalCloseButton}>
-                  <Ionicons name="close" size={24} color={colors.foreground} />
-                </Pressable>
-              </View>
+        {/* Backdrop - separate from modal content */}
+        <Pressable style={styles.modalBackdrop} onPress={onClose} />
 
-              <View style={styles.modalActions}>
-                <Pressable onPress={onSelectAll} style={styles.modalActionButton}>
-                  <Text style={styles.modalActionText}>Select All</Text>
-                </Pressable>
-                <Pressable onPress={onClearSelection} style={styles.modalActionButton}>
-                  <Text style={styles.modalActionText}>Clear</Text>
-                </Pressable>
-              </View>
-
-              <ScrollView style={styles.modalList}>
-                {repositories.length === 0 ? (
-                  <View style={styles.modalEmpty}>
-                    <Ionicons name="git-branch" size={48} color={colors.mutedForeground} />
-                    <Text style={[styles.emptyTitle, { marginTop: 12 }]}>No repositories</Text>
-                    <Text style={styles.emptySubtitle}>
-                      Install the GitHub App to see your repositories here.
-                    </Text>
-                  </View>
-                ) : (
-                  repositories.map((repo) => {
-                    const isSelected = selectedRepos.includes(repo.full_name);
-                    return (
-                      <Pressable
-                        key={repo.full_name}
-                        style={styles.repoItem}
-                        onPress={() => onToggleRepo(repo.full_name)}
-                        android_ripple={{ color: colors.border }}
-                      >
-                        <View style={styles.repoCheckboxContainer}>
-                          <View style={[styles.repoCheckbox, isSelected && styles.repoCheckboxChecked]}>
-                            {isSelected && <Text style={styles.repoCheckboxText}>✓</Text>}
-                          </View>
-                        </View>
-                        <View style={styles.repoItemMain}>
-                          <Ionicons name="logo-github" size={20} color={colors.foreground} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.repoItemName}>{repo.full_name}</Text>
-                            {repo.description && (
-                              <Text style={styles.repoItemDesc} numberOfLines={1}>
-                                {repo.description}
-                              </Text>
-                            )}
-                          </View>
-                          {repo.private && (
-                            <Ionicons name="lock-closed" size={14} color={colors.mutedForeground} />
-                          )}
-                        </View>
-                      </Pressable>
-                    );
-                  })
-                )}
-              </ScrollView>
-
-              {selectedRepos.length > 0 && (
-                <View style={styles.selectedRepos}>
-                  <Text style={styles.selectedRepoText}>{selectedRepos.length} selected</Text>
-                  <Pressable onPress={onClose} style={styles.modalActionButton}>
-                    <Text style={styles.modalActionText}>Done</Text>
-                  </Pressable>
-                </View>
-              )}
+        {/* Modal content - positioned absolutely, sibling to backdrop */}
+        <Animated.View
+          style={[styles.modalContent, { transform: [{ scale: scaleAnim }] }]}
+        >
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Repositories</Text>
+            <Pressable onPress={onClose} style={styles.modalCloseButton}>
+              <Ionicons name="close" size={24} color={colors.foreground} />
             </Pressable>
-          </Animated.View>
-        </Pressable>
+          </View>
+
+          <View style={styles.modalActions}>
+            <Pressable onPress={onSelectAll} style={styles.modalActionButton}>
+              <Text style={styles.modalActionText}>Select All</Text>
+            </Pressable>
+            <Pressable onPress={onClearSelection} style={styles.modalActionButton}>
+              <Text style={styles.modalActionText}>Clear</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView style={styles.modalList}>
+            {repositories.length === 0 ? (
+              <View style={styles.modalEmpty}>
+                <Ionicons name="git-branch" size={48} color={colors.mutedForeground} />
+                <Text style={[styles.emptyTitle, { marginTop: 12 }]}>No repositories</Text>
+                <Text style={styles.emptySubtitle}>
+                  Install the GitHub App to see your repositories here.
+                </Text>
+              </View>
+            ) : (
+              repositories.map((repo) => {
+                const isSelected = selectedRepos.includes(repo.full_name);
+                return (
+                  <Pressable
+                    key={repo.full_name}
+                    style={styles.repoItem}
+                    onPress={() => onToggleRepo(repo.full_name)}
+                    android_ripple={{ color: colors.border }}
+                  >
+                    <View style={styles.repoCheckboxContainer}>
+                      <View style={[styles.repoCheckbox, isSelected && styles.repoCheckboxChecked]}>
+                        {isSelected && <Text style={styles.repoCheckboxText}>✓</Text>}
+                      </View>
+                    </View>
+                    <View style={styles.repoItemMain}>
+                      <Ionicons name="logo-github" size={20} color={colors.foreground} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.repoItemName}>{repo.full_name}</Text>
+                        {repo.description && (
+                          <Text style={styles.repoItemDesc} numberOfLines={1}>
+                            {repo.description}
+                          </Text>
+                        )}
+                      </View>
+                      {repo.private && (
+                        <Ionicons name="lock-closed" size={14} color={colors.mutedForeground} />
+                      )}
+                    </View>
+                  </Pressable>
+                );
+              })
+            )}
+          </ScrollView>
+
+          {selectedRepos.length > 0 && (
+            <View style={styles.selectedRepos}>
+              <Text style={styles.selectedRepoText}>{selectedRepos.length} selected</Text>
+              <Pressable onPress={onClose} style={styles.modalActionButton}>
+                <Text style={styles.modalActionText}>Done</Text>
+              </Pressable>
+            </View>
+          )}
+        </Animated.View>
       </Animated.View>
     </Modal>
   );

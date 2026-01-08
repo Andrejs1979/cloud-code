@@ -11,10 +11,47 @@ const getBaseURL = () => {
   return 'https://cloud-code.finhub.workers.dev';
 };
 
+// Check if test mode is enabled from URL query parameter
+const isTestMode = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const url = new URL(window.location.href);
+  return url.searchParams.get('test') === 'true';
+};
+
+// Get search params including test mode if enabled
+const getSearchParams = () => {
+  const params = new URLSearchParams();
+  if (isTestMode()) {
+    params.set('test', 'true');
+  }
+  return params;
+};
+
+// Build URL with test mode parameter
+const buildUrl = (path: string): string => {
+  const testMode = isTestMode();
+  if (testMode) {
+    const separator = path.includes('?') ? '&' : '?';
+    return `${path}${separator}test=true`;
+  }
+  return path;
+};
+
 const apiClient = ky.create({
   prefixUrl: getBaseURL(),
   timeout: 30000,
   retry: 2,
+  hooks: {
+    beforeRequest: [
+      (request) => {
+        // Automatically add test mode parameter to API requests
+        if (isTestMode()) {
+          const url = new URL(request.url);
+          url.searchParams.set('test', 'true');
+        }
+      },
+    ],
+  },
 });
 
 export const api = {
@@ -62,7 +99,11 @@ export async function startInteractiveSession(
   repository?: { url: string; name: string; branch?: string },
   options: { maxTurns?: number; permissionMode?: string; createPR?: boolean } = {}
 ): Promise<SSEResponse> {
-  const response = await fetch(`${getBaseURL()}/interactive/start`, {
+  const baseUrl = getBaseURL();
+  const testModeParam = isTestMode() ? '?test=true' : '';
+  const url = `${baseUrl}/interactive/start${testModeParam}`;
+
+  const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -84,9 +125,11 @@ export async function startInteractiveSession(
 }
 
 export async function cancelSession(sessionId: string): Promise<{ success: boolean; message: string }> {
-  return apiClient.delete(`interactive/${sessionId}`).json();
+  const testModeParam = isTestMode() ? '?test=true' : '';
+  return apiClient.delete(`interactive/${sessionId}${testModeParam}`).json();
 }
 
 export async function getSessionStatus(sessionId: string): Promise<any> {
-  return apiClient.get(`interactive/status?sessionId=${sessionId}`).json();
+  const testModeParam = isTestMode() ? `&test=true` : `?sessionId=${sessionId}`;
+  return apiClient.get(`interactive/status${testModeParam}`).json();
 }
