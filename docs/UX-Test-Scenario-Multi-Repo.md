@@ -1,7 +1,7 @@
 # UX Test Scenario: Multi-Repo Support & PR Review Comments
 
 **Feature:** Multi-repo processing with parallel execution and PR review comments
-**Version:** 3.1.0
+**Version:** 3.2.0
 **Date:** 2026-01-08
 **Tester:** Claude Code QA Team
 **Production:** https://cloud-code.finhub.workers.dev
@@ -9,6 +9,29 @@
 ---
 
 ## Changelog
+
+### v3.2.0 (2026-01-08) - Backdrop Press & Test Mode Fixes ✅ DEPLOYED
+
+#### Issue #5: Backdrop Press Not Working ✅ FIXED
+- **Problem:** Clicking outside the modal (on backdrop) didn't close it
+- **Root Cause:** Modal content was nested inside backdrop Pressable; stopPropagation didn't work reliably on web
+- **Fix Applied:**
+  - Restructured modal so backdrop and content are siblings (not nested)
+  - Used absolute positioning for modal content (centered with translateX/translateY)
+  - Removed nested Pressable wrapper that was blocking events
+  - Backdrop now properly captures clicks outside the modal
+
+#### Issue #6: Test Mode Not Working ✅ FIXED
+- **Problem:** Test mode (?test=true) showed real production data instead of 5 mock repos
+- **Root Cause:** Test mode parameter in browser URL was not being propagated to API requests
+- **Fix Applied:**
+  - Added `isTestMode()` function to check for `?test=true` in browser URL
+  - Added ky `beforeRequest` hook that automatically appends `test=true` to all API requests
+  - Updated SSE endpoints (startInteractiveSession, cancelSession, getSessionStatus)
+  - Updated repositories refresh endpoint to include test mode parameter
+  - Test mode now works end-to-end: visit `/?test=true` to see 5 mock repositories
+
+---
 
 ### v3.1.0 (2026-01-08) - Modal Detachment Fix ✅ DEPLOYED
 
@@ -290,11 +313,11 @@ Sessions: 3 recent mock sessions
 - [x] Selected repos appear as chips below input
 - [x] Chips have X button to deselect individual repos
 
-### Modal Interaction ✅ NEW (v3.1.0)
+### Modal Interaction ✅ ALL VERIFIED (v3.1.0 + v3.2.0)
 - [x] Modal opens with smooth fade-in animation (200ms)
 - [x] Modal opens with scale animation (spring from 0.9 to 1.0)
 - [x] Modal closes with smooth fade-out animation (150ms)
-- [x] Clicking backdrop (outside modal) closes modal
+- [x] Clicking backdrop closes modal ✅ v3.2.0 FIXED
 - [x] X button closes modal
 - [x] "Done" button closes modal
 - [x] Checkboxes toggle without detachment errors
