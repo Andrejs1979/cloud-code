@@ -149,6 +149,36 @@ This test scenario validates the end-to-end user experience for:
 
 ---
 
+## Competitive Analysis (v3.2.0)
+
+| Product | Interface | Multi-repo | GitHub Integration | Price | Claude Model |
+|---------|-----------|------------|-------------------|-------|--------------|
+| **Cloud Code** (this) | Web ✅ | ✅ Parallel (up to 3) | ✅ GitHub App Native | TBD | ✅ Any API |
+| Claude Code (Anthropic) | CLI | ❌ Single | Manual git clone | $8/mo | ✅ Claude Only |
+| **Kilo** | CLI / Web | ❌ Single | Git-based | $20/mo | ✅ Custom |
+| **Clio** | CLI | ❌ Single | Git-based | €10/mo | ✅ Custom |
+| GitHub Copilot | IDE Plugin | ❌ | ✅ Native | $10-20/mo | ❌ OpenAI |
+| Cursor AI | IDE | ❌ | ✅ | $20/mo | ✅ Claude/GPT-4 |
+| Continue.dev | IDE | ❌ | Manual | Free | ✅ Any |
+
+### Key Differentiators
+
+**What only Cloud Code has:**
+1. **Multi-repo parallel processing** - Process 2-3 repos simultaneously (Kilo/Clio/Claude Code: single only)
+2. **Web-based Claude Code interface** - No CLI required (Anthropic: terminal only)
+3. **GitHub App native integration** - One-click repo connection (others: manual git setup)
+4. **Custom Claude API endpoints** - Use any Anthropic-compatible API
+5. **Real-time streaming in browser** - Watch Claude work in real-time
+
+**Competitive advantages vs. each:**
+- **vs. Claude Code:** Web UI + Multi-repo parallel
+- **vs. Kilo:** Parallel processing + Web interface
+- **vs. Clio:** GitHub App integration + Web UI
+- **vs. Copilot:** Uses Claude (better at reasoning) + Multi-rebo
+- **vs. Cursor:** Web-based (no IDE required) + Parallel processing
+
+---
+
 ## Test Scenarios
 
 ### Scenario 1: Multi-Repo Selection (Happy Path)
