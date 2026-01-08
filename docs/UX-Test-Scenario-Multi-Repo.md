@@ -151,25 +151,28 @@ This test scenario validates the end-to-end user experience for:
 
 ## Competitive Analysis (v3.2.0)
 
-| Product | Where Code Runs | Interface | Mobile App | Multi-repo | GitHub | Setup |
-|---------|-----------------|-----------|-------------|------------|--------|-------|
-| **Cloud Code** (this) | ☁️ **Cloudflare Containers** | Web ✅ | ✅ **Expo/React Native** | ✅ Parallel | ✅ GitHub App | **Zero install** |
-| Claude Code (Anthropic) | 💻 Your machine | CLI | ❌ None | ❌ Single | Manual | Node + CLI + git |
-| **Kilo** | 💻 Your machine | CLI / Web | ❌ Desktop-only | ❌ Single | Git-based | Local install |
-| **Clio** | 💻 Your machine | CLI | ❌ None | ❌ Single | Git-based | Local install |
-| GitHub Copilot | 💻 Your IDE | IDE Plugin | ❌ IDE only | ❌ | ✅ | VS Code / Jetbrains |
-| Cursor AI | 💻 Your IDE | IDE | ❌ IDE only | ❌ | ✅ | VS Code install |
-| Continue.dev | 💻 Your IDE | IDE | ❌ IDE only | ❌ | Manual | VS Code install |
+| Product | Where Code Runs | Interface | Mobile App | Multi-repo | Price | GitHub | Setup |
+|---------|-----------------|-----------|-------------|------------|-------|--------|-------|
+| **Cloud Code** (this) | ☁️ **Cloudflare Containers** | Web ✅ | ✅ **Expo/React Native** | ✅ Parallel | 💰 **Free + API key** | ✅ GitHub App | **Zero install** |
+| Claude Code (Anthropic) | 💻 Your machine | CLI | ❌ None | ❌ Single | $8/mo | Manual | Node + CLI + git |
+| **Kilo** | 💻 Your machine | CLI / Web | ❌ Desktop-only | ❌ Single | $20/mo | Git-based | Local install |
+| **Clio** | 💻 Your machine | CLI | ❌ None | ❌ Single | €10/mo | Git-based | Local install |
+| GitHub Copilot | 💻 Your IDE | IDE Plugin | ❌ IDE only | ❌ | $10-20/mo | ✅ | VS Code / Jetbrains |
+| Cursor AI | 💻 Your IDE | IDE | ❌ IDE only | ❌ | $20/mo | ✅ | VS Code install |
+| Continue.dev | 💻 Your IDE | IDE | ❌ IDE only | ❌ | Free | Manual | VS Code install |
 
-### 🚀 Primary USP: Remote-First + Mobile-First
+### 🚀 Primary USP: Remote-First + Mobile-First + Cost-Effective
 
 **Cloud Code is the ONLY Claude Code interface with:**
 - ☁️ **Remote execution** (runs in Cloudflare Containers)
 - 📱 **Native mobile app** (Expo/React Native - iOS + Android)
+- 💰 **Bring-your-own-key** (pay only for Claude usage, no markup)
 
 **Why this matters:**
 - **Zero local setup** - No Node.js, no CLI, no git configuration
 - **True mobile support** - Native iOS/Android app, not just "responsive web"
+- **Bring your own API key** - Use your existing Anthropic account, no markup
+- **Much more affordable** - Pay only for Claude API usage (~$3-20/mo vs $8-20/mo per tool)
 - **Works from any device** - iPhone, iPad, Android phone, work computer, Chromebook
 - **No "it works on my machine"** - Code executes where it deploys
 - **Enterprise-friendly** - No software installation policy violations
@@ -185,7 +188,7 @@ This test scenario validates the end-to-end user experience for:
 | Native Android app | ✅ Yes | ❌ No |
 | Works on iPhone | ✅ Native app | ❌ No |
 | Works on iPad | ✅ Native app | ⚠️ Browser only |
-| Works at work | ✅ Yes | ⚠️ Maybe (policy) |
+| Monthly cost | 💰 **~$3-20** (API only) | 💸💸 **$8-20+** (per tool) |
 | Battery drain | ❌ None | ✅ Yes (local compute) |
 
 ### Key Differentiators
@@ -193,17 +196,17 @@ This test scenario validates the end-to-end user experience for:
 **What only Cloud Code has:**
 1. **☁️ Remote execution by default** - Code runs in Cloudflare Containers (PRIMARY USP)
 2. **📱 Native mobile app** - Expo/React Native for iOS + Android (SECONDARY USP)
-3. **Multi-repo parallel processing** - Process 2-3 repos simultaneously
-4. **GitHub App native integration** - One-click repo connection
-5. **Custom Claude API endpoints** - Use any Anthropic-compatible API
+3. **💰 Bring-your-own-key** - No markup on Claude pricing (COST ADVANTAGE)
+4. **Multi-repo parallel processing** - Process 2-3 repos simultaneously
+5. **GitHub App native integration** - One-click repo connection
 6. **Real-time streaming** - Watch Claude work in real-time (web + mobile)
 
 **Competitive advantages:**
-- **vs. Claude Code:** Remote + Mobile app + Web UI + Multi-repo
-- **vs. Kilo:** Cloud execution + Native mobile + Parallel
-- **vs. Clio:** Cloud execution + GitHub App + Mobile app
-- **vs. Copilot:** Remote + Mobile + Claude (better reasoning)
-- **vs. Cursor:** Cloud-based + Mobile app + No IDE
+- **vs. Claude Code:** Remote + Mobile app + Web UI + Multi-repo + Cheaper
+- **vs. Kilo:** Cloud execution + Native mobile + Parallel + BYO key
+- **vs. Clio:** Cloud execution + GitHub App + Mobile app + Cheaper
+- **vs. Copilot:** Remote + Mobile + Claude (better reasoning) + Cheaper
+- **vs. Cursor:** Cloud-based + Mobile app + No IDE + Cheaper
 
 ---
 
