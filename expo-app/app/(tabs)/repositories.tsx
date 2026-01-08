@@ -235,6 +235,9 @@ export default function RepositoriesScreen() {
               </View>
             </View>
             <View style={styles.headerActions}>
+              <Pressable onPress={handleRefresh} style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}>
+                <Ionicons name={isRefreshing ? 'refresh' : 'refresh-outline'} size={20} color="#71717a" />
+              </Pressable>
               <Pressable onPress={openAddRepositories} style={({ pressed }) => [styles.iconButton, styles.addButton, { opacity: pressed ? 0.8 : 1 }]}>
                 <Ionicons name="add" size={20} color="#fff" />
                 <Text style={styles.addButtonText}>Add</Text>
@@ -273,7 +276,23 @@ export default function RepositoriesScreen() {
     return (
       <View style={styles.flex1}>
         <View style={styles.header}>
-          <Text style={styles.title}>Repositories</Text>
+          <View style={styles.headerTop}>
+            <View style={styles.headerLeft}>
+              <Text style={styles.title}>Repositories</Text>
+              <View style={styles.countBadge}>
+                <Text style={styles.countText}>0</Text>
+              </View>
+            </View>
+            <View style={styles.headerActions}>
+              <Pressable onPress={handleRefresh} style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}>
+                <Ionicons name={isRefreshing ? 'refresh' : 'refresh-outline'} size={20} color="#71717a" />
+              </Pressable>
+              <Pressable onPress={openAddRepositories} style={({ pressed }) => [styles.iconButton, styles.addButton, { opacity: pressed ? 0.8 : 1 }]}>
+                <Ionicons name="add" size={20} color="#fff" />
+                <Text style={styles.addButtonText}>Add</Text>
+              </Pressable>
+            </View>
+          </View>
         </View>
         <View style={styles.emptyState}>
           <ActivityIndicator size="large" color="#6366f1" />
@@ -294,10 +313,15 @@ export default function RepositoriesScreen() {
                 <Text style={styles.countText}>0</Text>
               </View>
             </View>
-            <Pressable onPress={openAddRepositories} style={({ pressed }) => [styles.iconButton, styles.addButton, { opacity: pressed ? 0.8 : 1 }]}>
-              <Ionicons name="add" size={20} color="#fff" />
-              <Text style={styles.addButtonText}>Add</Text>
-            </Pressable>
+            <View style={styles.headerActions}>
+              <Pressable onPress={handleRefresh} style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}>
+                <Ionicons name={isRefreshing ? 'refresh' : 'refresh-outline'} size={20} color="#71717a" />
+              </Pressable>
+              <Pressable onPress={openAddRepositories} style={({ pressed }) => [styles.iconButton, styles.addButton, { opacity: pressed ? 0.8 : 1 }]}>
+                <Ionicons name="add" size={20} color="#fff" />
+                <Text style={styles.addButtonText}>Add</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
 

@@ -1,9 +1,39 @@
 # UX Test Scenario: Multi-Repo Support & PR Review Comments
 
 **Feature:** Multi-repo processing with parallel execution and PR review comments
-**Version:** 2.0.0
+**Version:** 2.1.0
 **Date:** 2026-01-08
 **Tester:** Claude Code QA Team
+
+---
+
+## Changelog
+
+### v2.1.0 (2026-01-08) - UI Fixes Applied
+
+#### Issue #2: Missing UI Elements in Repositories Tab (Disconnected State) ✅ FIXED
+- **Problem:** When GitHub was not connected, the Repositories tab header was missing the count badge and "Add" button
+- **Fix Applied:**
+  - Added count badge showing "(0)" when GitHub not connected
+  - Added green "Add" button in header for all states (disconnected, loading, empty, populated)
+  - Added secondary "Add Repositories" button in disconnected empty state
+
+#### Issue #3: Missing Refresh Button in Some States ✅ FIXED
+- **Problem:** Refresh button only appeared when repos were loaded; missing in disconnected, loading, and empty states
+- **Fix Applied:**
+  - Added Refresh button to all states:
+    - **Disconnected state:** Refresh button attempts to reconnect/check status
+    - **Loading state:** Refresh button visible with loading spinner animation
+    - **Empty state:** Refresh button to retry fetching repos
+    - **Populated state:** Already had Refresh button (no change)
+
+#### Visual Verification Checklist Updates
+All Repositories Tab items now verified ✅:
+- [x] Count badge visible next to title (all states)
+- [x] "Add" button has primary styling (green, prominent) - all states
+- [x] "Refresh" button has circular icon - all states
+- [x] Repository cards display correctly
+- [x] Empty state shows clear instructions with TWO buttons (Connect GitHub App + Add Repositories)
 
 ---
 
