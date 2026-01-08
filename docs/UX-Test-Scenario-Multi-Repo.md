@@ -153,7 +153,7 @@ This test scenario validates the end-to-end user experience for:
 
 | Product | Where Code Runs | Interface | Mobile App | Multi-repo | Price | GitHub | Setup |
 |---------|-----------------|-----------|-------------|------------|-------|--------|-------|
-| **Cloud Code** (this) | ☁️ **Cloudflare Containers** | Web ✅ | ✅ **Expo/React Native** | ✅ Parallel | 💰 **Free + API key** | ✅ GitHub App | **Zero install** |
+| **Cloud Code** (this) | ☁️ **Cloudflare Containers** | Web ✅ | ✅ **Expo/React Native** | ✅ Parallel | 💰 **Free (LLMs included)** | ✅ GitHub App | **Zero install** |
 | Claude Code (Anthropic) | 💻 Your machine | CLI | ❌ None | ❌ Single | $8/mo | Manual | Node + CLI + git |
 | **Kilo** | 💻 Your machine | CLI / Web | ❌ Desktop-only | ❌ Single | $20/mo | Git-based | Local install |
 | **Clio** | 💻 Your machine | CLI | ❌ None | ❌ Single | €10/mo | Git-based | Local install |
@@ -161,18 +161,18 @@ This test scenario validates the end-to-end user experience for:
 | Cursor AI | 💻 Your IDE | IDE | ❌ IDE only | ❌ | $20/mo | ✅ | VS Code install |
 | Continue.dev | 💻 Your IDE | IDE | ❌ IDE only | ❌ | Free | Manual | VS Code install |
 
-### 🚀 Primary USP: Remote-First + Mobile-First + Cost-Effective
+### 🚀 Primary USP: Remote-First + Mobile-First + LLMs Included
 
 **Cloud Code is the ONLY Claude Code interface with:**
 - ☁️ **Remote execution** (runs in Cloudflare Containers)
 - 📱 **Native mobile app** (Expo/React Native - iOS + Android)
-- 💰 **Bring-your-own-key** (pay only for Claude usage, no markup)
+- 💰 **LLMs included** (no API key needed, we supply the models)
 
 **Why this matters:**
 - **Zero local setup** - No Node.js, no CLI, no git configuration
 - **True mobile support** - Native iOS/Android app, not just "responsive web"
-- **Bring your own API key** - Use your existing Anthropic account, no markup
-- **Much more affordable** - Pay only for Claude API usage (~$3-20/mo vs $8-20/mo per tool)
+- **LLMs provided** - No API key setup, we handle everything centrally
+- **Much more affordable** - Free to use with included LLM access (vs $8-20/mo per tool)
 - **Works from any device** - iPhone, iPad, Android phone, work computer, Chromebook
 - **No "it works on my machine"** - Code executes where it deploys
 - **Enterprise-friendly** - No software installation policy violations
@@ -188,7 +188,7 @@ This test scenario validates the end-to-end user experience for:
 | Native Android app | ✅ Yes | ❌ No |
 | Works on iPhone | ✅ Native app | ❌ No |
 | Works on iPad | ✅ Native app | ⚠️ Browser only |
-| Monthly cost | 💰 **~$3-20** (API only) | 💸💸 **$8-20+** (per tool) |
+| Monthly cost | 💰 **Free** (LLMs included) | 💸💸 **$8-20+** (per tool) |
 | Battery drain | ❌ None | ✅ Yes (local compute) |
 
 ### Key Differentiators
@@ -196,17 +196,17 @@ This test scenario validates the end-to-end user experience for:
 **What only Cloud Code has:**
 1. **☁️ Remote execution by default** - Code runs in Cloudflare Containers (PRIMARY USP)
 2. **📱 Native mobile app** - Expo/React Native for iOS + Android (SECONDARY USP)
-3. **💰 Bring-your-own-key** - No markup on Claude pricing (COST ADVANTAGE)
+3. **💰 LLMs included** - We supply the models, no API key needed (COST ADVANTAGE)
 4. **Multi-repo parallel processing** - Process 2-3 repos simultaneously
 5. **GitHub App native integration** - One-click repo connection
 6. **Real-time streaming** - Watch Claude work in real-time (web + mobile)
 
 **Competitive advantages:**
-- **vs. Claude Code:** Remote + Mobile app + Web UI + Multi-repo + Cheaper
-- **vs. Kilo:** Cloud execution + Native mobile + Parallel + BYO key
-- **vs. Clio:** Cloud execution + GitHub App + Mobile app + Cheaper
-- **vs. Copilot:** Remote + Mobile + Claude (better reasoning) + Cheaper
-- **vs. Cursor:** Cloud-based + Mobile app + No IDE + Cheaper
+- **vs. Claude Code:** Remote + Mobile app + Web UI + Multi-repo + LLMs included
+- **vs. Kilo:** Cloud execution + Native mobile + Parallel + Free (LLMs included)
+- **vs. Clio:** Cloud execution + GitHub App + Mobile app + Free
+- **vs. Copilot:** Remote + Mobile + Claude (better reasoning) + Free
+- **vs. Cursor:** Cloud-based + Mobile app + No IDE + Free
 
 ---
 
