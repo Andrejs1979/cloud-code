@@ -1,12 +1,22 @@
-import { useEffect } from 'react';
-import { View, Text, ScrollView, RefreshControl, Pressable, StyleSheet } from 'react-native';
+import { useEffect, useState, useCallback } from 'react';
+import { View, Text, ScrollView, Pressable, StyleSheet, Alert } from 'react-native';
 import { useAppStore } from '../../lib/useStore';
 import { Badge } from '../../components/Badge';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
+import { CreateIssueModal } from '../../components/CreateIssueModal';
+import { PRDetailModal } from '../../components/PRDetailModal';
+import { SwipeableItem } from '../../components/SwipeableItem';
+import { PullToRefresh } from '../../components/PullToRefresh';
 import { colors } from '../../lib/styles';
 import { Ionicons } from '@expo/vector-icons';
+import { haptics } from '../../lib/haptics';
 
 const FILTERS = ['All', 'Open', 'Processing', 'Completed'] as const;
+
+interface SelectedPR {
+  number: number;
+  repository: string;
+}
 
 const styles = StyleSheet.create({
   flex1: { flex: 1, backgroundColor: colors.background },
@@ -21,6 +31,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: colors.foreground,
+  },
+  headerButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   filterRow: {
     flexDirection: 'row',
@@ -99,6 +117,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.mutedForeground,
   },
+  swipeAction: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+  },
+  swipeActionIcon: {
+    marginBottom: 4,
+  },
+  swipeActionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  deleteSwipeAction: {
+    backgroundColor: colors.error,
+  },
+  viewSwipeAction: {
+    backgroundColor: colors.brand,
+  },
 });
 
 const STATUS_COLORS = {
@@ -107,7 +144,17 @@ const STATUS_COLORS = {
 } as const;
 
 function IssuesScreenContent() {
-  const { issues, isLoading, refresh, selectedIssueFilter, setSelectedIssueFilter } = useAppStore();
+  const {
+    issues,
+    isLoading,
+    refresh,
+    selectedIssueFilter,
+    setSelectedIssueFilter,
+    repositories,
+  } = useAppStore();
+
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [selectedPR, setSelectedPR] = useState<SelectedPR | null>(null);
 
   useEffect(() => {
     refresh();
@@ -121,101 +168,183 @@ function IssuesScreenContent() {
     return true;
   });
 
+  const handleCreateIssue = useCallback(() => {
+    haptics('medium');
+    setCreateModalVisible(true);
+  }, []);
+
+  const handleIssueCreated = useCallback((issue: { number: number; title: string }) => {
+    refresh();
+    Alert.alert('Success', `Issue #${issue.number} created successfully!`);
+  }, [refresh]);
+
+  const handleRefresh = useCallback(async () => {
+    await refresh();
+  }, [refresh]);
+
+  const handleViewPR = useCallback((prNumber: number, repository: string) => {
+    haptics('light');
+    setSelectedPR({ number: prNumber, repository });
+  }, []);
+
+  const handleSwipeAction = useCallback((issue: any, action: string) => {
+    haptics('medium');
+    if (action === 'view') {
+      // Navigate to issue details or PR details
+      handleViewPR(issue.number, issue.repository || '');
+    } else if (action === 'delete') {
+      Alert.alert(
+        'Delete Issue',
+        `Are you sure you want to delete issue #${issue.number}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => {
+              // Handle delete logic
+              haptics('heavy');
+            },
+          },
+        ]
+      );
+    }
+  }, [handleViewPR]);
+
   return (
-    <ScrollView
-      style={styles.flex1}
-      refreshControl={
-        <RefreshControl refreshing={isLoading} onRefresh={refresh} tintColor="#6366f1" />
-      }
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>GitHub Issues</Text>
-      </View>
-
-      {/* Filter Tabs */}
-      <View style={styles.filterRow}>
-        {FILTERS.map((filter) => (
-          <Pressable
-            key={filter}
-            onPress={() => setSelectedIssueFilter(filter as any)}
-            style={[
-              styles.filterButton,
-              {
-                backgroundColor:
-                  selectedIssueFilter === filter ? colors.brand : colors.muted,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.filterText,
-                {
-                  color:
-                    selectedIssueFilter === filter
-                      ? colors.background
-                      : colors.foreground,
-                },
-              ]}
-            >
-              {filter}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {/* Issues List */}
-      <View style={styles.content}>
-        {!filteredIssues.length ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="git-branch-outline" size={48} color="#71717a" />
-            <Text style={styles.emptyText}>No issues found</Text>
-            <Text style={styles.emptySubtext}>
-              {selectedIssueFilter === 'All'
-                ? 'Issues will appear here when created in your connected repository'
-                : `No ${selectedIssueFilter.toLowerCase()} issues`}
-            </Text>
+    <>
+      <PullToRefresh onRefresh={handleRefresh} refreshing={isLoading}>
+        <ScrollView style={styles.flex1}>
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.title}>GitHub Issues</Text>
+            <Pressable style={styles.headerButton} onPress={handleCreateIssue}>
+              <Ionicons name="add" size={24} color="#fff" />
+            </Pressable>
           </View>
-        ) : (
-          filteredIssues.map((issue) => (
-            <View
-              key={issue.id ?? issue.number}
-              style={styles.issueCard}
-            >
-              <View
+
+          {/* Filter Tabs */}
+          <View style={styles.filterRow}>
+            {FILTERS.map((filter) => (
+              <Pressable
+                key={filter}
+                onPress={() => setSelectedIssueFilter(filter as any)}
                 style={[
-                  styles.statusIndicator,
-                  { backgroundColor: issue.state === 'open' ? colors.success : colors.mutedForeground },
+                  styles.filterButton,
+                  {
+                    backgroundColor:
+                      selectedIssueFilter === filter ? colors.brand : colors.muted,
+                  },
                 ]}
-              />
-              <View style={styles.issueContent}>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'flex-start',
-                    justifyContent: 'space-between',
-                    marginBottom: 4,
-                  }}
+              >
+                <Text
+                  style={[
+                    styles.filterText,
+                    {
+                      color:
+                        selectedIssueFilter === filter
+                          ? colors.background
+                          : colors.foreground,
+                    },
+                  ]}
                 >
-                  <Text style={styles.issueTitle}>{issue.title}</Text>
-                  <Badge
-                    label={issue.state === 'open' ? 'Open' : 'Closed'}
-                    variant={issue.state === 'open' ? 'success' : 'secondary'}
-                  />
-                </View>
-                <Text style={styles.issueBody}>{issue.body ?? 'No description'}</Text>
-                <View style={styles.issueMeta}>
-                  <Text style={styles.issueNumber}>#{issue.number}</Text>
-                  {issue.repository && (
-                    <Text style={styles.issueRepo}>{issue.repository}</Text>
-                  )}
-                </View>
+                  {filter}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {/* Issues List */}
+          <View style={styles.content}>
+            {!filteredIssues.length ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="git-branch-outline" size={48} color="#71717a" />
+                <Text style={styles.emptyText}>No issues found</Text>
+                <Text style={styles.emptySubtext}>
+                  {selectedIssueFilter === 'All'
+                    ? 'Issues will appear here when created in your connected repository'
+                    : `No ${selectedIssueFilter.toLowerCase()} issues`}
+                </Text>
               </View>
-            </View>
-          ))
-        )}
-      </View>
-    </ScrollView>
+            ) : (
+              filteredIssues.map((issue) => (
+                <SwipeableItem
+                  key={issue.id ?? issue.number}
+                  leftActions={[
+                    {
+                      icon: 'eye',
+                      label: 'View',
+                      color: colors.brand,
+                      backgroundColor: colors.brand,
+                      onPress: () => handleSwipeAction(issue, 'view'),
+                    },
+                  ]}
+                  rightActions={[
+                    {
+                      icon: 'close',
+                      label: 'Delete',
+                      color: colors.error,
+                      backgroundColor: colors.error,
+                      onPress: () => handleSwipeAction(issue, 'delete'),
+                    },
+                  ]}
+                  onSwipeStart={() => haptics('light')}
+                >
+                  <View style={styles.issueCard}>
+                    <View
+                      style={[
+                        styles.statusIndicator,
+                        { backgroundColor: issue.state === 'open' ? colors.success : colors.mutedForeground },
+                      ]}
+                    />
+                    <View style={styles.issueContent}>
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'flex-start',
+                          justifyContent: 'space-between',
+                          marginBottom: 4,
+                        }}
+                      >
+                        <Text style={styles.issueTitle}>{issue.title}</Text>
+                        <Badge
+                          label={issue.state === 'open' ? 'Open' : 'Closed'}
+                          variant={issue.state === 'open' ? 'success' : 'secondary'}
+                        />
+                      </View>
+                      <Text style={styles.issueBody}>{issue.body ?? 'No description'}</Text>
+                      <View style={styles.issueMeta}>
+                        <Text style={styles.issueNumber}>#{issue.number}</Text>
+                        {issue.repository && (
+                          <Text style={styles.issueRepo}>{issue.repository}</Text>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                </SwipeableItem>
+              ))
+            )}
+          </View>
+        </ScrollView>
+      </PullToRefresh>
+
+      {/* Create Issue Modal */}
+      <CreateIssueModal
+        visible={createModalVisible}
+        onClose={() => setCreateModalVisible(false)}
+        onIssueCreated={handleIssueCreated}
+      />
+
+      {/* PR Detail Modal */}
+      {selectedPR && (
+        <PRDetailModal
+          visible={!!selectedPR}
+          onClose={() => setSelectedPR(null)}
+          prNumber={selectedPR.number}
+          repository={selectedPR.repository}
+        />
+      )}
+    </>
   );
 }
 
