@@ -426,4 +426,3 @@ export const offlineState = {
 
 // Export the storage manager for advanced use
 export { storage };
-export { STORAGE_KEYS };

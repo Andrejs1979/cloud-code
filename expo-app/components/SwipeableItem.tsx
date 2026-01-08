@@ -15,7 +15,7 @@ import {
 import { colors } from '../lib/tokens/colors';
 import { triggerHaptic } from '../lib/haptics';
 
-const SCREEN_WIDTH = Dimensions.get('window').width';
+const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = 80;
 
 export interface SwipeAction {
@@ -32,7 +32,7 @@ interface SwipeableItemProps {
   rightActions?: SwipeAction[];
   onSwipeStart?: () => void;
   onSwipeEnd?: () => void;
-  overswipe?: number; // How far past the action to reveal (0-1)
+  overswipe?: number;
   enabled?: boolean;
 }
 
@@ -68,27 +68,23 @@ export function SwipeableItem({
 
         const { dx } = gestureState;
 
-        // Determine swipe direction
         if (dx > 0 && leftActions.length > 0) {
-          swipeDirection.current = 'right'; // Swiping right reveals left actions
+          swipeDirection.current = 'right';
         } else if (dx < 0 && rightActions.length > 0) {
-          swipeDirection.current = 'left'; // Swiping left reveals right actions
+          swipeDirection.current = 'left';
         }
 
-        // Constrain the translation
         let newTranslateX = dx;
         if (swipeDirection.current === 'right') {
           newTranslateX = Math.min(Math.max(dx, 0), totalLeftWidth * (1 + overswipe));
         } else if (swipeDirection.current === 'left') {
           newTranslateX = Math.max(Math.min(dx, 0), -totalRightWidth * (1 + overswipe));
         } else {
-          // No actions in this direction
           newTranslateX = 0;
         }
 
         translateX.setValue(newTranslateX);
 
-        // Determine which action is active
         if (swipeDirection.current === 'right') {
           const actionIndex = Math.floor(dx / (totalLeftWidth / leftActions.length));
           if (actionIndex !== activeAction.current && actionIndex >= 0 && actionIndex < leftActions.length) {
@@ -115,7 +111,6 @@ export function SwipeableItem({
         let triggeredAction: SwipeAction | null = null;
 
         if (swipeDirection.current === 'right' && dx > 0) {
-          // Swiping right - check left actions
           const actionWidth = totalLeftWidth / leftActions.length;
           const actionIndex = Math.floor(dx / actionWidth);
           if (dx >= actionWidth * 0.7 && actionIndex >= 0 && actionIndex < leftActions.length) {
@@ -123,7 +118,6 @@ export function SwipeableItem({
             triggeredAction = leftActions[actionIndex];
           }
         } else if (swipeDirection.current === 'left' && dx < 0) {
-          // Swiping left - check right actions
           const actionWidth = totalRightWidth / rightActions.length;
           const actionIndex = Math.floor(Math.abs(dx) / actionWidth);
           if (Math.abs(dx) >= actionWidth * 0.7 && actionIndex >= 0 && actionIndex < rightActions.length) {
@@ -132,7 +126,6 @@ export function SwipeableItem({
           }
         }
 
-        // Animate to snap position or back to 0
         Animated.spring(translateX, {
           toValue: shouldSnapTo,
           useNativeDriver: true,
@@ -143,13 +136,11 @@ export function SwipeableItem({
             await new Promise(resolve => setTimeout(resolve, 100));
             triggeredAction.onPress();
 
-            // Reset after action
             Animated.spring(translateX, {
               toValue: 0,
               useNativeDriver: true,
             }).start();
           } else {
-            // Reset to 0
             Animated.spring(translateX, {
               toValue: 0,
               useNativeDriver: true,

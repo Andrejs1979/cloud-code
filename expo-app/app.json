@@ -112,26 +112,6 @@
           "origin": false
         }
       ],
-      [
-        "expo-haptics",
-        {
-          "enabled": true
-        }
-      ],
-      [
-        "expo-clipboard",
-        {
-          "minimumOSVersion": "13.0"
-        }
-      ],
-      [
-        "expo-status-bar",
-        {
-          "style": "light",
-          "translucent": true,
-          "hidden": false
-        }
-      ]
     ],
     "experiments": {
       "typedRoutes": true
