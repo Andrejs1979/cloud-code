@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View } from 'react-native';
 
+// Wrap with necessary providers for web
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
@@ -12,6 +13,8 @@ export default function RootLayout() {
           screenOptions={{
             headerShown: false,
             contentStyle: { backgroundColor: '#09090b' },
+            // Disable link preview on web to avoid context error
+            disableLinkPreview: true,
           }}
         >
           <Stack.Screen name="(tabs)" />
