@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import type { DashboardStats, Task, Session, Issue, GitHubStatus, RepositoryDetail } from './types';
 import { api } from './api';
 
+// Re-export types for convenience
+export type { DashboardStats, Task, Session, Issue, GitHubStatus, RepositoryDetail };
+
 interface AppState {
   // Data
   stats: DashboardStats | null;
