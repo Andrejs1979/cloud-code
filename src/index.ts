@@ -1579,24 +1579,23 @@ export default {
         response = await handleInteractiveRequest(request, env);
       }
 
-      // Dashboard API endpoints - must come before static files
-      else if (pathname.startsWith('/api/')) {
-        logWithContext('MAIN_HANDLER', 'Routing to dashboard API');
-        routeMatched = true;
-        response = await handleDashboardAPI(request, env);
-      }
-
-      // Dashboard static files (Expo app)
-      // Serve from root path for Expo SPA, keep /dashboard for backward compatibility
-      else if (pathname === '/' || pathname.startsWith('/_expo/') || pathname.startsWith('/assets/') || pathname.startsWith('/dashboard/')) {
-        logWithContext('MAIN_HANDLER', 'Routing to dashboard static files');
+      // Dashboard static files (Expo SPA app)
+      // Serve from root path and all unmatched routes for client-side routing
+      // Important: This must come AFTER all API/worker routes to catch SPA routes
+      else if (
+        pathname === '/' ||
+        pathname.startsWith('/_expo/') ||
+        pathname.startsWith('/assets/') ||
+        pathname.startsWith('/dashboard')
+      ) {
+        logWithContext('MAIN_HANDLER', 'Routing to dashboard static files (SPA)');
         routeMatched = true;
         response = await serveDashboard(request, env);
       }
 
-      // Default home page
+      // Default home page (should only be reached for unknown API routes)
       else {
-        logWithContext('MAIN_HANDLER', 'Serving home page');
+        logWithContext('MAIN_HANDLER', 'Unknown route, serving home page');
         routeMatched = true;
         const isProduction = env.ENVIRONMENT === 'production';
         const debugSection = isProduction ? '' : `
