@@ -12,25 +12,54 @@ interface ChatMessage {
   timestamp: number;
   isStreaming?: boolean;
   error?: boolean;
+  metadata?: {
+    repository?: string;
+    prNumber?: number;
+  };
 }
 
 // Parse markdown for code blocks
-function parseMarkdown(text: string): Array<{ type: 'text' | 'code'; content: string; language?: string }> {
-  const parts: Array<{ type: 'text' | 'code'; content: string; language?: string }> = [];
-  const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
+function parseMarkdown(text: string): Array<{ type: 'text' | 'code' | 'pr'; content: string; language?: string; prNumber?: number; prUrl?: string }> {
+  const parts: Array<{ type: 'text' | 'code' | 'pr'; content: string; language?: string; prNumber?: number; prUrl?: string }> = [];
+
+  // First, extract PR references
+  const prRegex = /Pull request created: #(\d+)\n+URL: (https:\/\/github\.com\/[^\/]+\/[^\/]+\/pull\/\d+)/g;
+  let prProcessedText = text;
+  const prMatches = [...text.matchAll(new RegExp(/Pull request created: #(\d+)\n+URL: (https:\/\/github\.com\/[^\/]+\/[^\/]+\/pull\/\d+)/g))];
+
   let lastIndex = 0;
+
+  // Process PR references
+  for (const match of prMatches) {
+    const fullMatch = match[0];
+    const matchIndex = text.indexOf(fullMatch, lastIndex);
+    if (matchIndex > lastIndex) {
+      parts.push({ type: 'text', content: text.slice(lastIndex, matchIndex) });
+    }
+    parts.push({
+      type: 'pr',
+      content: `Pull request #${match[1]} created`,
+      prNumber: parseInt(match[1], 10),
+      prUrl: match[2]
+    });
+    lastIndex = matchIndex + fullMatch.length;
+  }
+
+  // Then process code blocks
+  const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
   let match;
 
-  while ((match = codeBlockRegex.exec(text)) !== null) {
+  // Need to re-apply regex on the pr-processed text for code blocks
+  while ((match = codeBlockRegex.exec(prProcessedText)) !== null) {
     if (match.index > lastIndex) {
-      parts.push({ type: 'text', content: text.slice(lastIndex, match.index) });
+      parts.push({ type: 'text', content: prProcessedText.slice(lastIndex, match.index) });
     }
     parts.push({ type: 'code', content: match[2].trim(), language: match[1] || 'text' });
     lastIndex = match.index + match[0].length;
   }
 
-  if (lastIndex < text.length) {
-    parts.push({ type: 'text', content: text.slice(lastIndex) });
+  if (lastIndex < prProcessedText.length) {
+    parts.push({ type: 'text', content: prProcessedText.slice(lastIndex) });
   }
 
   if (parts.length === 0) {
@@ -55,6 +84,20 @@ function CodeBlock({ content, language, onCopy }: { content: string; language: s
   );
 }
 
+// PR reference component
+function PRReference({ prNumber, prUrl }: { prNumber: number; prUrl: string }) {
+  return (
+    <View style={styles.prContainer}>
+      <Ionicons name="git-pull-request" size={16} color={colors.brand} />
+      <Text style={styles.prText}>Pull request #{prNumber} created</Text>
+      <Pressable onPress={() => window.open(prUrl, '_blank')} style={styles.prLink}>
+        <Text style={styles.prLinkText}>View PR</Text>
+        <Ionicons name="open-outline" size={14} color={colors.brand} />
+      </Pressable>
+    </View>
+  );
+}
+
 // Message component
 function Message({ message, onRetry, onCopy }: { message: ChatMessage; onRetry?: () => void; onCopy: (content: string) => void }) {
   const parsedContent = parseMarkdown(message.content);
@@ -64,6 +107,9 @@ function Message({ message, onRetry, onCopy }: { message: ChatMessage; onRetry?:
   if (isSystem) {
     return (
       <View style={styles.systemMessageContainer}>
+        {message.metadata?.repository && (
+          <Text style={styles.systemRepo}>{message.metadata.repository}</Text>
+        )}
         <Text style={styles.systemMessageText}>{message.content}</Text>
       </View>
     );
@@ -87,6 +133,8 @@ function Message({ message, onRetry, onCopy }: { message: ChatMessage; onRetry?:
                   language={part.language || 'text'}
                   onCopy={() => onCopy(part.content)}
                 />
+              ) : part.type === 'pr' ? (
+                <PRReference prNumber={part.prNumber!} prUrl={part.prUrl!} />
               ) : (
                 <Text style={styles.messageText}>{part.content}</Text>
               )}
@@ -146,6 +194,11 @@ const styles = StyleSheet.create({
   },
   repoTextPlaceholder: {
     color: colors.mutedForeground,
+  },
+  repoCount: {
+    fontSize: 11,
+    color: colors.mutedForeground,
+    marginLeft: 4,
   },
   chatContainer: {
     flex: 1,
@@ -241,6 +294,16 @@ const styles = StyleSheet.create({
   systemMessageContainer: {
     alignItems: 'center',
     paddingVertical: 8,
+    gap: 4,
+  },
+  systemRepo: {
+    fontSize: 11,
+    color: colors.brand,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    textTransform: 'uppercase',
   },
   systemMessageText: {
     fontSize: 12,
@@ -249,6 +312,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
+  },
+  prContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+    borderRadius: 8,
+    border: 1,
+    borderColor: 'rgba(34, 197, 94, 0.3)',
+  },
+  prText: {
+    fontSize: 14,
+    color: colors.foreground,
+    flex: 1,
+  },
+  prLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: colors.brand,
+  },
+  prLinkText: {
+    fontSize: 12,
+    color: 'white',
+    fontWeight: '500',
   },
   inputContainer: {
     borderTopWidth: 1,
@@ -322,6 +414,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.foreground,
   },
+  // Multi-repo modal styles
   modalOverlay: {
     position: 'absolute',
     top: 0,
@@ -335,7 +428,7 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: '90%',
-    maxWidth: 400,
+    maxWidth: 450,
     maxHeight: '80%',
     backgroundColor: colors.card,
     borderRadius: 12,
@@ -355,16 +448,53 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.foreground,
   },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  modalActionButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: colors.muted,
+  },
+  modalActionText: {
+    fontSize: 13,
+    color: colors.brand,
+    fontWeight: '500',
+  },
   modalList: {
-    maxHeight: 300,
+    maxHeight: 350,
   },
   repoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  repoCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  repoCheckboxChecked: {
+    backgroundColor: colors.brand,
+    borderColor: colors.brand,
+  },
+  repoCheckboxText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'white',
+  },
   repoItemMain: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -379,7 +509,39 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.mutedForeground,
     marginTop: 4,
-    marginLeft: 28,
+  },
+  repoItemMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  repoPrivateBadge: {
+    fontSize: 11,
+    color: colors.mutedForeground,
+  },
+  selectedRepos: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  selectedRepoChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.3)',
+  },
+  selectedRepoText: {
+    fontSize: 12,
+    color: colors.brand,
   },
   modalEmpty: {
     padding: 32,
@@ -405,13 +567,25 @@ const QUICK_ACTIONS = [
   'Refactor...',
 ];
 
+// Checkbox component
+function Checkbox({ checked, onToggle }: { checked: boolean; onToggle: () => void }) {
+  return (
+    <Pressable
+      onPress={onToggle}
+      style={[styles.repoCheckbox, checked && styles.repoCheckboxChecked]}
+    >
+      {checked && <Text style={styles.repoCheckboxText}>✓</Text>}
+    </Pressable>
+  );
+}
+
 export default function ChatScreen() {
   const { repositories, refresh } = useAppStore();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
+  const [selectedRepos, setSelectedRepos] = useState<string[]>([]);
   const [showRepoModal, setShowRepoModal] = useState(false);
   const [lastPrompt, setLastPrompt] = useState<string>('');
   const scrollViewRef = useRef<ScrollView>(null);
@@ -431,14 +605,6 @@ export default function ChatScreen() {
   const copyToClipboard = useCallback(async (content: string) => {
     if (Platform.OS === 'web') {
       await navigator.clipboard.writeText(content);
-    } else {
-      // For native, use expo-clipboard if available
-      try {
-        const Clipboard = require('expo-clipboard');
-        await Clipboard.setStringAsync(content);
-      } catch (e) {
-        console.warn('Clipboard not available:', e);
-      }
     }
   }, []);
 
@@ -447,6 +613,27 @@ export default function ChatScreen() {
     setSessionId(null);
     setLastPrompt('');
     setInputText('');
+    setSelectedRepos([]);
+  }, []);
+
+  const toggleRepo = useCallback((repoName: string) => {
+    setSelectedRepos(prev =>
+      prev.includes(repoName)
+        ? prev.filter(r => r !== repoName)
+        : [...prev, repoName]
+    );
+  }, []);
+
+  const selectAllRepos = useCallback(() => {
+    setSelectedRepos(repositories.map(r => r.full_name));
+  }, [repositories]);
+
+  const clearRepoSelection = useCallback(() => {
+    setSelectedRepos([]);
+  }, []);
+
+  const removeRepo = useCallback((repoName: string) => {
+    setSelectedRepos(prev => prev.filter(r => r !== repoName));
   }, []);
 
   const sendMessage = async (promptText?: string) => {
@@ -465,19 +652,21 @@ export default function ChatScreen() {
     setIsProcessing(true);
 
     try {
+      // If no session, start a new one
       if (!sessionId) {
         const response = await fetch('/interactive/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: text,
-            repository: selectedRepo ? {
-              url: `https://github.com/${selectedRepo}`,
-              name: selectedRepo,
-            } : undefined,
+            repositories: selectedRepos.length > 0 ? selectedRepos.map(r => ({
+              url: `https://github.com/${r}`,
+              name: r,
+            })) : undefined,
             options: {
               maxTurns: 10,
               permissionMode: 'bypassPermissions',
+              createPR: true,
             },
           }),
         });
@@ -496,7 +685,13 @@ export default function ChatScreen() {
         const response = await fetch(`/interactive/${sessionId}/message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text }),
+          body: JSON.stringify({
+            message: text,
+            repositories: selectedRepos.length > 0 ? selectedRepos.map(r => ({
+              url: `https://github.com/${r}`,
+              name: r,
+            })) : undefined,
+          }),
         });
 
         if (!response.ok) {
@@ -590,6 +785,7 @@ export default function ChatScreen() {
                   )
                 );
               } else if (currentEventType === 'status') {
+                const metadata = parsed.repository ? { repository: parsed.repository } : undefined;
                 setMessages((prev) => {
                   const existingStatusIdx = prev.findIndex(m => m.role === 'system' && m.isStreaming);
                   const statusMsg: ChatMessage = {
@@ -598,6 +794,7 @@ export default function ChatScreen() {
                     content: parsed.message || parsed.status || 'Processing...',
                     timestamp: Date.now(),
                     isStreaming: true,
+                    metadata,
                   };
 
                   if (existingStatusIdx >= 0) {
@@ -606,6 +803,38 @@ export default function ChatScreen() {
                   return [...prev, statusMsg];
                 });
               } else if (currentEventType === 'complete') {
+                // Handle multi-repo results
+                if (parsed.multiRepoResults && Array.isArray(parsed.multiRepoResults)) {
+                  const results = parsed.multiRepoResults;
+                  const successCount = results.filter((r: any) => r.success).length;
+                  const failCount = results.length - successCount;
+
+                  let resultsText = `## Multi-Repo Results\n\nProcessed ${results.length} repositories:\n\n`;
+
+                  for (const result of results) {
+                    const statusIcon = result.success ? '✓' : '✗';
+                    resultsText += `${statusIcon} **${result.repository}**\n`;
+                    if (result.success) {
+                      if (result.prUrl) {
+                        resultsText += `  - PR: ${result.prUrl}\n`;
+                      }
+                    } else {
+                      resultsText += `  - Error: ${result.error}\n`;
+                    }
+                    resultsText += '\n';
+                  }
+
+                  resultsText += `**Summary:** ${successCount} succeeded, ${failCount} failed`;
+
+                  assistantContent += '\n\n' + resultsText;
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMessageId
+                        ? { ...m, content: assistantContent }
+                        : m
+                    )
+                  );
+                }
                 break;
               } else if (currentEventType === 'error') {
                 assistantContent += `\n\nError: ${parsed.message || 'Unknown error'}`;
@@ -641,6 +870,16 @@ export default function ChatScreen() {
     }
   };
 
+  const getRepoDisplayText = () => {
+    if (selectedRepos.length === 0) {
+      return repositories.length > 0 ? `${repositories.length} repos` : 'Select repo';
+    }
+    if (selectedRepos.length === 1) {
+      return selectedRepos[0];
+    }
+    return `${selectedRepos.length} repos`;
+  };
+
   return (
     <KeyboardAvoidingView style={styles.flex1} behavior="padding" keyboardVerticalOffset={0}>
       <View style={styles.flex1}>
@@ -653,27 +892,37 @@ export default function ChatScreen() {
             )}
             <Text style={styles.title}>Chat</Text>
           </View>
-          {selectedRepo ? (
-            <Pressable
-              style={styles.repoSelector}
-              onPress={() => setShowRepoModal(true)}
-            >
-              <Ionicons name="logo-github" size={16} color={colors.foreground} />
-              <Text style={styles.repoText}>{selectedRepo}</Text>
-              <Ionicons name="chevron-down" size={14} color={colors.mutedForeground} />
-            </Pressable>
-          ) : (
-            <Pressable
-              style={styles.repoSelector}
-              onPress={() => setShowRepoModal(true)}
-            >
-              <Ionicons name="folder-outline" size={16} color={colors.mutedForeground} />
-              <Text style={[styles.repoText, styles.repoTextPlaceholder]}>
-                {repositories.length > 0 ? `${repositories.length} repos` : 'Select repo'}
-              </Text>
-            </Pressable>
-          )}
+          <Pressable
+            style={styles.repoSelector}
+            onPress={() => setShowRepoModal(true)}
+          >
+            <Ionicons name="git-branch" size={16} color={selectedRepos.length > 0 ? colors.foreground : colors.mutedForeground} />
+            <Text style={[styles.repoText, selectedRepos.length === 0 && styles.repoTextPlaceholder]}>
+              {getRepoDisplayText()}
+            </Text>
+            {selectedRepos.length > 1 && (
+              <Text style={styles.repoCount}>(multi)</Text>
+            )}
+            <Ionicons name="chevron-down" size={14} color={colors.mutedForeground} />
+          </Pressable>
         </View>
+
+        {/* Selected repos chips when multiple selected */}
+        {selectedRepos.length > 1 && (
+          <View style={styles.selectedRepos}>
+            {selectedRepos.slice(0, 3).map(repo => (
+              <View key={repo} style={styles.selectedRepoChip}>
+                <Text style={styles.selectedRepoText}>{repo.split('/')[1]}</Text>
+                <Pressable onPress={() => removeRepo(repo)}>
+                  <Ionicons name="close-circle" size={14} color={colors.brand} />
+                </Pressable>
+              </View>
+            ))}
+            {selectedRepos.length > 3 && (
+              <Text style={styles.selectedRepoText}>+{selectedRepos.length - 3} more</Text>
+            )}
+          </View>
+        )}
 
         {messages.length === 0 ? (
           <View style={styles.emptyState}>
@@ -681,7 +930,10 @@ export default function ChatScreen() {
             <Text style={styles.emptyTitle}>Start a conversation</Text>
             <Text style={styles.emptySubtitle}>
               Ask Claude Code to help with your code.{'\n'}
-              {selectedRepo ? `Working in ${selectedRepo}` : 'Select a repository to make changes directly.'}
+              {selectedRepos.length > 0
+                ? `Working on ${selectedRepos.length === 1 ? selectedRepos[0] : `${selectedRepos.length} repositories`}`
+                : 'Select repositories to make changes directly.'
+              }
             </Text>
             <View style={styles.quickActions}>
               {QUICK_ACTIONS.map((action) => (
@@ -752,13 +1004,23 @@ export default function ChatScreen() {
           </View>
         </View>
 
+        {/* Multi-repo selection modal */}
         {showRepoModal && (
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Repository</Text>
+                <Text style={styles.modalTitle}>Select Repositories</Text>
                 <Pressable onPress={() => setShowRepoModal(false)}>
                   <Ionicons name="close" size={24} color={colors.foreground} />
+                </Pressable>
+              </View>
+
+              <View style={styles.modalActions}>
+                <Pressable onPress={selectAllRepos} style={styles.modalActionButton}>
+                  <Text style={styles.modalActionText}>Select All</Text>
+                </Pressable>
+                <Pressable onPress={clearRepoSelection} style={styles.modalActionButton}>
+                  <Text style={styles.modalActionText}>Clear</Text>
                 </Pressable>
               </View>
 
@@ -772,31 +1034,43 @@ export default function ChatScreen() {
                     </Text>
                   </View>
                 ) : (
-                  repositories.map((repo) => (
-                    <Pressable
-                      key={repo.full_name}
-                      style={styles.repoItem}
-                      onPress={() => {
-                        setSelectedRepo(repo.full_name);
-                        setShowRepoModal(false);
-                      }}
-                    >
-                      <View style={styles.repoItemMain}>
-                        <Ionicons name="logo-github" size={20} color={colors.foreground} />
-                        <Text style={styles.repoItemName}>{repo.full_name}</Text>
-                        {repo.private && (
-                          <Ionicons name="lock-closed" size={14} color={colors.mutedForeground} />
-                        )}
-                      </View>
-                      {repo.description && (
-                        <Text style={styles.repoItemDesc} numberOfLines={2}>
-                          {repo.description}
-                        </Text>
-                      )}
-                    </Pressable>
-                  ))
+                  repositories.map((repo) => {
+                    const isSelected = selectedRepos.includes(repo.full_name);
+                    return (
+                      <Pressable
+                        key={repo.full_name}
+                        style={styles.repoItem}
+                        onPress={() => toggleRepo(repo.full_name)}
+                      >
+                        <Checkbox checked={isSelected} onToggle={() => toggleRepo(repo.full_name)} />
+                        <View style={styles.repoItemMain}>
+                          <Ionicons name="logo-github" size={20} color={colors.foreground} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.repoItemName}>{repo.full_name}</Text>
+                            {repo.description && (
+                              <Text style={styles.repoItemDesc} numberOfLines={1}>
+                                {repo.description}
+                              </Text>
+                            )}
+                          </View>
+                          {repo.private && (
+                            <Ionicons name="lock-closed" size={14} color={colors.mutedForeground} />
+                          )}
+                        </View>
+                      </Pressable>
+                    );
+                  })
                 )}
               </ScrollView>
+
+              {selectedRepos.length > 0 && (
+                <View style={styles.selectedRepos}>
+                  <Text style={styles.selectedRepoText}>{selectedRepos.length} selected</Text>
+                  <Pressable onPress={() => setShowRepoModal(false)} style={styles.modalActionButton}>
+                    <Text style={styles.modalActionText}>Done</Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
           </View>
         )}

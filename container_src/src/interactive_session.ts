@@ -44,6 +44,11 @@ interface InteractiveSession {
     name: string;
     branch?: string;
   };
+  repositories?: Array<{
+    url: string;
+    name: string;
+    branch?: string;
+  }>;
   workspaceDir?: string;
   conversationHistory: ConversationMessage[];
   currentTurn: number;
@@ -76,6 +81,12 @@ interface InteractiveSessionConfig {
     name: string;
     branch?: string;
   };
+  repositories?: Array<{
+    url: string;
+    name: string;
+    branch?: string;
+  }>;
+  prNumber?: number; // If provided, post review comments to this PR
   githubToken?: string;
   anthropicApiKey?: string;
   anthropicBaseUrl?: string;
@@ -92,6 +103,11 @@ interface InteractiveSessionConfig {
       name: string;
       branch?: string;
     };
+    repositories?: Array<{
+      url: string;
+      name: string;
+      branch?: string;
+    }>;
     messages?: ConversationMessage[];
     currentTurn?: number;
   };
@@ -245,6 +261,261 @@ function getMessageText(message: CLIResult | any): string {
 }
 
 // ============================================================================
+// Multi-Repository Processing
+// ============================================================================
+
+interface RepositoryResult {
+  repository: string;
+  success: boolean;
+  output?: string;
+  error?: string;
+  prUrl?: string;
+}
+
+async function processMultipleRepositories(
+  repositories: Array<{ url: string; name: string; branch?: string }>,
+  prompt: string,
+  githubToken: string | undefined,
+  streamer: SSEStreamer
+): Promise<RepositoryResult[]> {
+  logWithContext('MULTI_REPO', 'Starting parallel processing', {
+    count: repositories.length
+  });
+
+  const CONCURRENCY_LIMIT = 3;
+  const results: RepositoryResult[] = [];
+
+  for (let i = 0; i < repositories.length; i += CONCURRENCY_LIMIT) {
+    const batch = repositories.slice(i, i + CONCURRENCY_LIMIT);
+    const batchResults = await Promise.allSettled(
+      batch.map(repo => processSingleRepository(repo, prompt, githubToken, streamer))
+    );
+
+    for (let j = 0; j < batchResults.length; j++) {
+      const result = batchResults[j];
+      const repoName = batch[j].name;
+
+      if (result.status === 'fulfilled') {
+        results.push(result.value);
+        streamer.send('status', {
+          message: `Completed: ${repoName}`,
+          repository: repoName,
+          timestamp: Date.now()
+        });
+      } else {
+        results.push({
+          repository: repoName,
+          success: false,
+          error: result.reason?.message || 'Unknown error'
+        });
+        streamer.send('error', {
+          message: `Failed: ${repoName}`,
+          repository: repoName,
+          error: result.reason?.message,
+          timestamp: Date.now()
+        });
+      }
+    }
+  }
+
+  logWithContext('MULTI_REPO', 'Parallel processing complete', {
+    total: results.length,
+    successful: results.filter(r => r.success).length,
+    failed: results.filter(r => !r.success).length
+  });
+
+  return results;
+}
+
+async function processSingleRepository(
+  repository: { url: string; name: string; branch?: string },
+  prompt: string,
+  githubToken: string | undefined,
+  streamer: SSEStreamer
+): Promise<RepositoryResult> {
+  const workspaceId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  const workspacePath = `/tmp/workspace/multi-${workspaceId}`;
+
+  try {
+    logWithContext('MULTI_REPO', `Processing ${repository.name}`, { workspacePath });
+
+    streamer.send('status', {
+      message: `Cloning ${repository.name}...`,
+      repository: repository.name,
+      timestamp: Date.now()
+    });
+
+    await setupWorkspace(repository.url, workspaceId);
+    const originalCwd = process.cwd();
+    process.chdir(workspacePath);
+
+    streamer.send('status', {
+      message: `Running Claude on ${repository.name}...`,
+      repository: repository.name,
+      timestamp: Date.now()
+    });
+
+    const cliResult = await new Promise<CLIResult>((resolve, reject) => {
+      const cliArgs = [
+        '--output-format', 'json', '-p', '--print',
+        '--permission-mode', 'acceptEdits',
+        '--max-turns', '10',
+        prompt
+      ];
+
+      const cliProcess = spawn('claude', cliArgs, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        cwd: workspacePath,
+        env: {
+          ...process.env,
+          ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || ''
+        }
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      cliProcess.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      cliProcess.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      cliProcess.on('close', (code) => {
+        if (code === 0 && stdout) {
+          try {
+            resolve(JSON.parse(stdout));
+          } catch (e) {
+            reject(new Error(`Failed to parse CLI output: ${stdout.substring(0, 200)}`));
+          }
+        } else {
+          reject(new Error(`CLI exited with code ${code}: ${stderr || stdout}`));
+        }
+      });
+
+      cliProcess.on('error', (err) => {
+        reject(err);
+      });
+    });
+
+    const messageText = getMessageText(cliResult);
+
+    let prUrl: string | undefined;
+    if (githubToken) {
+      const hasChanges = await detectGitChanges(workspacePath);
+
+      if (hasChanges) {
+        streamer.send('status', {
+          message: `Creating PR for ${repository.name}...`,
+          repository: repository.name,
+          timestamp: Date.now()
+        });
+
+        const [owner, repo] = repository.name.split('/');
+        const githubClient = new ContainerGitHubClient(githubToken, owner, repo);
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace(/T/g, '-').split('.')[0];
+        const branchName = `claude-multi-${workspaceId}-${timestamp}`;
+
+        await createFeatureBranchCommitAndPush(
+          workspacePath,
+          branchName,
+          `Changes from multi-repo processing`
+        );
+
+        const prSummary = await readPRSummary(workspacePath);
+        const repoInfo = await githubClient.getRepository();
+
+        const pullRequest = await githubClient.createPullRequest(
+          prSummary?.split('\n')[0].trim() || `Multi-repo changes for ${repository.name}`,
+          prSummary || `Changes from Claude Code multi-repo processing.`,
+          branchName,
+          repoInfo.default_branch
+        );
+
+        prUrl = pullRequest.html_url;
+
+        await initializeGitWorkspace(workspacePath);
+      }
+    }
+
+    process.chdir(originalCwd);
+
+    try {
+      await fs.rm(workspacePath, { recursive: true, force: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+
+    return {
+      repository: repository.name,
+      success: true,
+      output: messageText,
+      prUrl
+    };
+
+  } catch (error) {
+    return {
+      repository: repository.name,
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+// ============================================================================
+// PR Review Comment Parsing
+// ============================================================================
+
+interface ReviewSuggestion {
+  path: string;
+  line?: number;
+  suggestion: string;
+  rationale?: string;
+}
+
+function hasReviewSuggestions(output: string): boolean {
+  const patterns = [
+    /```suggestion/,
+    /<suggestion>/,
+    /I suggest (changing|replacing|adding|removing)/i,
+    /Consider (replacing|changing|using)/i
+  ];
+  return patterns.some(pattern => pattern.test(output));
+}
+
+function parseReviewSuggestions(output: string, repoName: string): ReviewSuggestion[] {
+  const suggestions: ReviewSuggestion[] = [];
+
+  const suggestionBlockRegex = /File:\s*`?([\/\w\-\.]+)`?\s*\n.*?```suggestion\n([\s\S]+?)```/g;
+  let match;
+  while ((match = suggestionBlockRegex.exec(output)) !== null) {
+    suggestions.push({
+      path: match[1],
+      suggestion: match[2].trim()
+    });
+  }
+
+  const tagRegex = /<suggestion\s+file="([^"]+)"(?:\s+line="(\d+)")?>([\s\S]+?)<\/suggestion>/g;
+  while ((match = tagRegex.exec(output)) !== null) {
+    suggestions.push({
+      path: match[1],
+      line: match[2] ? parseInt(match[2]) : undefined,
+      suggestion: match[3].trim()
+    });
+  }
+
+  logWithContext('REVIEW_PARSER', 'Parsed suggestions', {
+    repo: repoName,
+    count: suggestions.length
+  });
+
+  return suggestions;
+}
+
+// ============================================================================
 // Main Interactive Session Handler
 // ============================================================================
 
@@ -270,6 +541,7 @@ export async function handleInteractiveSession(
         id: config.sessionId,
         status: 'processing',
         repository: config.session.repository || config.repository,
+        repositories: config.session.repositories || config.repositories,
         conversationHistory: (config.session.messages || []).map(m => ({
           role: m.role as 'user' | 'assistant' | 'system',
           content: m.content,
@@ -327,6 +599,7 @@ export async function handleInteractiveSession(
       id: config.sessionId,
       status: 'starting',
       repository: config.repository,
+      repositories: config.repositories,
       conversationHistory: [],
       currentTurn: 0,
       createdAt: Date.now(),
@@ -336,7 +609,9 @@ export async function handleInteractiveSession(
     logWithContext('INTERACTIVE_SESSION', 'Starting new interactive session', {
       sessionId: session.id,
       hasPrompt: !!config.prompt,
-      hasRepository: !!config.repository
+      hasRepository: !!config.repository,
+      hasRepositories: !!config.repositories,
+      repositoriesCount: config.repositories?.length || 0
     });
   }
 
@@ -373,7 +648,31 @@ export async function handleInteractiveSession(
       throw new Error('ANTHROPIC_API_KEY is required');
     }
 
-    // 3. Setup workspace if repository provided
+    // 3. Check for multi-repo processing mode
+    if (config.repositories && config.repositories.length > 1) {
+      streamer.send('status', {
+        message: `Processing ${config.repositories.length} repositories in parallel...`,
+        timestamp: Date.now()
+      });
+
+      const results = await processMultipleRepositories(
+        config.repositories,
+        config.prompt,
+        config.githubToken,
+        streamer
+      );
+
+      streamer.send('complete', {
+        sessionId: session.id,
+        multiRepoResults: results,
+        timestamp: Date.now()
+      });
+
+      streamer.close();
+      return;
+    }
+
+    // 4. Setup workspace if repository provided
     // For continuation: verify workspace exists or recreate it
     // For new sessions: clone if repository provided
     let needsWorkspaceSetup = false;

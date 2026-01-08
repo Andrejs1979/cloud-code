@@ -85,12 +85,28 @@ export interface InteractiveSessionState {
     name: string;
     branch?: string;
   };
+  repositories?: Array<{
+    url: string;
+    name: string;
+    branch?: string;
+  }>;
   currentTurn: number;
   createdAt: number;
   lastActivityAt: number;
   completedAt?: number;
   errorMessage?: string;
   messages?: SessionMessage[];
+  multiRepoResults?: MultiRepoResult[];
+}
+
+// Result from processing a single repository in multi-repo mode
+export interface MultiRepoResult {
+  repository: string;
+  success: boolean;
+  output?: string;
+  error?: string;
+  prUrl?: string;
+  reviewComments?: number;
 }
 
 // Session message for conversation history

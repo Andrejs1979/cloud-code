@@ -20,6 +20,12 @@ interface StartInteractiveSessionRequest {
     name: string;
     branch?: string;
   };
+  repositories?: Array<{
+    url: string;
+    name: string;
+    branch?: string;
+  }>;
+  prNumber?: number; // If provided, post review comments to this PR
   options?: {
     maxTurns?: number;
     permissionMode?: 'bypassPermissions' | 'required';
@@ -58,10 +64,10 @@ export async function handleStartInteractiveSession(
     const body: StartInteractiveSessionRequest = await request.json();
 
     // Validate request - prompt is now optional, session can start empty
-    if (!body.prompt && !body.repository) {
+    if (!body.prompt && !body.repository && !body.repositories) {
       return Response.json({
         success: false,
-        error: 'Either prompt or repository must be provided'
+        error: 'Either prompt or repository (or repositories) must be provided'
       } satisfies StartInteractiveSessionResponse, { status: 400 });
     }
 
@@ -88,6 +94,7 @@ export async function handleStartInteractiveSession(
         sessionId,
         status: 'starting',
         repository: body.repository,
+        repositories: body.repositories,
         currentTurn: 0,
         createdAt: now,
         lastActivityAt: now
@@ -109,7 +116,8 @@ export async function handleStartInteractiveSession(
 
     // Get GitHub token if repository is provided
     let githubToken: string | undefined;
-    if (body.repository) {
+    const repositories = body.repositories;
+    if (body.repository || repositories) {
       const githubConfigId = (env.GITHUB_APP_CONFIG as any).idFromName('github-app-config');
       const githubConfigDO = (env.GITHUB_APP_CONFIG as any).get(githubConfigId);
 
@@ -133,6 +141,8 @@ export async function handleStartInteractiveSession(
       sessionId,
       prompt: body.prompt,
       repository: body.repository,
+      repositories,
+      prNumber: body.prNumber,
       // GLM configuration
       anthropicApiKey: env.ANTHROPIC_API_KEY,
       anthropicBaseUrl: 'https://api.z.ai/api/anthropic',

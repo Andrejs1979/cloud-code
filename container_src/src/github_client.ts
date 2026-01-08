@@ -114,6 +114,87 @@ export class ContainerGitHubClient {
     // Just logging for now since we're using git commands directly
     logWithContext('GITHUB_CLIENT', 'Branch push requested', { branchName });
   }
+
+  // Create a review comment on a pull request
+  async createReviewComment(
+    prNumber: number,
+    body: string,
+    path?: string,
+    line?: number
+  ): Promise<void> {
+    try {
+      logWithContext('GITHUB_CLIENT', 'Creating review comment', {
+        prNumber,
+        path,
+        line,
+        bodyLength: body.length
+      });
+
+      if (path && line) {
+        // Create an inline review comment on a specific line
+        // Use createReview which supports inline comments via the comments array
+        await this.octokit.rest.pulls.createReview({
+          owner: this.owner,
+          repo: this.repo,
+          pull_number: prNumber,
+          body,
+          comments: [{ path, line, body }],
+          event: 'COMMENT'
+        });
+      } else {
+        // For general comments, use issue comments instead (simpler)
+        await this.octokit.rest.issues.createComment({
+          owner: this.owner,
+          repo: this.repo,
+          issue_number: prNumber,
+          body
+        });
+      }
+
+      logWithContext('GITHUB_CLIENT', 'Review comment created successfully', { prNumber });
+    } catch (error) {
+      logWithContext('GITHUB_CLIENT', 'Failed to create review comment', {
+        error: (error as Error).message,
+        prNumber,
+        path,
+        line
+      });
+      throw error;
+    }
+  }
+
+  // Create a review with multiple comments at once
+  async createReview(
+    prNumber: number,
+    body: string,
+    comments: Array<{ path: string; line: number; body: string }>,
+    event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT' = 'COMMENT'
+  ): Promise<void> {
+    try {
+      logWithContext('GITHUB_CLIENT', 'Creating review', {
+        prNumber,
+        commentCount: comments.length,
+        event
+      });
+
+      await this.octokit.rest.pulls.createReview({
+        owner: this.owner,
+        repo: this.repo,
+        pull_number: prNumber,
+        body,
+        comments,
+        event
+      });
+
+      logWithContext('GITHUB_CLIENT', 'Review created successfully', { prNumber });
+    } catch (error) {
+      logWithContext('GITHUB_CLIENT', 'Failed to create review', {
+        error: (error as Error).message,
+        prNumber
+      });
+      throw error;
+    }
+  }
 }
 
 // Helper function for logger compatibility
