@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native';
-import { useAppStore } from '../lib/useStore';
+import { useAppStore } from '../../lib/useStore';
 import { Card } from '../../components/Card';
 import { StatusDot } from '../../components/StatusDot';
-import { formatTime } from '../lib/utils';
-import { colors, commonStyles } from '../lib/styles';
+import { formatTime } from '../../lib/utils';
+import { colors, commonStyles } from '../../lib/styles';
 import { Ionicons } from '@expo/vector-icons';
 
 const styles = StyleSheet.create({

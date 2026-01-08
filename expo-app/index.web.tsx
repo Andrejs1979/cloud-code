@@ -1,5 +1,5 @@
+// Expo Router entry point for web
 import 'global';
-import { registerRootComponent } from 'expo';
-import App from './app/web-entry';
+import registerRootComponent from 'expo-router/entry';
 
-registerRootComponent(App);
+registerRootComponent();

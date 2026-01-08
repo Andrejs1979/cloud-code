@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { View, Text, ScrollView, RefreshControl, Pressable, StyleSheet } from 'react-native';
-import { useAppStore } from '../lib/useStore';
+import { useAppStore } from '../../lib/useStore';
 import { Badge } from '../../components/Badge';
-import { colors } from '../lib/styles';
+import { colors } from '../../lib/styles';
 import { Ionicons } from '@expo/vector-icons';
 
 const FILTERS = ['All', 'Open', 'Processing', 'Completed'] as const;

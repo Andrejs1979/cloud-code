@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
-import { useAppStore } from '../lib/useStore';
+import { useAppStore } from '../../lib/useStore';
 import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { StatusDot } from '../../components/StatusDot';
 import { Button } from '../../components/Button';
-import { colors } from '../lib/styles';
+import { colors } from '../../lib/styles';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 
