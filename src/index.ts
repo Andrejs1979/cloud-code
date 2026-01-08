@@ -1566,6 +1566,29 @@ export default {
         }
       }
 
+      // Test mode endpoints (for UI testing without real backend)
+      else if (pathname === "/api/test/enable") {
+        logWithContext("MAIN_HANDLER", "Test mode enable endpoint");
+        routeMatched = true;
+        response = Response.json({
+          message: "Test mode is enabled via query parameter or header",
+          instructions: {
+            queryParameter: "Add ?test=true to any request URL",
+            header: "Add X-Test-Mode: true header to any request"
+          },
+          endpoints: [
+            "GET /api/repositories?test=true - Mock repositories",
+            "GET /api/stats?test=true - Mock statistics",
+            "GET /api/status?test=true - Mock status",
+            "GET /api/tasks?test=true - Mock tasks",
+            "GET /api/sessions?test=true - Mock sessions",
+            "GET /api/issues?test=true - Mock issues",
+            "POST /interactive/start?test=true - Mock SSE stream"
+          ]
+        });
+      }
+
+
       // Container routes
       else if (pathname.startsWith('/container')) {
         // Debug endpoint - only available in non-production environments
