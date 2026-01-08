@@ -227,7 +227,20 @@ export default function RepositoriesScreen() {
     return (
       <ScrollView style={styles.flex1}>
         <View style={styles.header}>
-          <Text style={styles.title}>Repositories</Text>
+          <View style={styles.headerTop}>
+            <View style={styles.headerLeft}>
+              <Text style={styles.title}>Repositories</Text>
+              <View style={styles.countBadge}>
+                <Text style={styles.countText}>0</Text>
+              </View>
+            </View>
+            <View style={styles.headerActions}>
+              <Pressable onPress={openAddRepositories} style={({ pressed }) => [styles.iconButton, styles.addButton, { opacity: pressed ? 0.8 : 1 }]}>
+                <Ionicons name="add" size={20} color="#fff" />
+                <Text style={styles.addButtonText}>Add</Text>
+              </Pressable>
+            </View>
+          </View>
         </View>
 
         <View style={styles.emptyState}>
@@ -236,12 +249,20 @@ export default function RepositoriesScreen() {
           <Text style={styles.emptyText}>
             Connect your GitHub App to view and manage connected repositories.
           </Text>
-          <Button
-            label="Connect GitHub App"
-            icon={<Ionicons name="logo-github" size={18} color="currentColor" />}
-            variant="primary"
-            onPress={openGitHubSettings}
-          />
+          <View style={{ gap: 12 }}>
+            <Button
+              label="Connect GitHub App"
+              icon={<Ionicons name="logo-github" size={18} color="currentColor" />}
+              variant="primary"
+              onPress={openGitHubSettings}
+            />
+            <Button
+              label="Add Repositories"
+              icon={<Ionicons name="add-circle" size={18} color="currentColor" />}
+              variant="outline"
+              onPress={openAddRepositories}
+            />
+          </View>
         </View>
       </ScrollView>
     );
