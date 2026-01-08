@@ -654,15 +654,24 @@ export default function ChatScreen() {
     try {
       // If no session, start a new one
       if (!sessionId) {
+        const isMultiRepo = selectedRepos.length > 1;
         const response = await fetch('/interactive/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: text,
-            repositories: selectedRepos.length > 0 ? selectedRepos.map(r => ({
-              url: `https://github.com/${r}`,
-              name: r,
-            })) : undefined,
+            // Use 'repository' for single repo, 'repositories' for multiple
+            ...(isMultiRepo ? {
+              repositories: selectedRepos.map(r => ({
+                url: `https://github.com/${r}`,
+                name: r,
+              }))
+            } : selectedRepos.length === 1 ? {
+              repository: {
+                url: `https://github.com/${selectedRepos[0]}`,
+                name: selectedRepos[0],
+              }
+            } : {}),
             options: {
               maxTurns: 10,
               permissionMode: 'bypassPermissions',
@@ -682,15 +691,24 @@ export default function ChatScreen() {
 
         await processSSEStream(response);
       } else {
+        const isMultiRepo = selectedRepos.length > 1;
         const response = await fetch(`/interactive/${sessionId}/message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: text,
-            repositories: selectedRepos.length > 0 ? selectedRepos.map(r => ({
-              url: `https://github.com/${r}`,
-              name: r,
-            })) : undefined,
+            // Use 'repository' for single repo, 'repositories' for multiple
+            ...(isMultiRepo ? {
+              repositories: selectedRepos.map(r => ({
+                url: `https://github.com/${r}`,
+                name: r,
+              }))
+            } : selectedRepos.length === 1 ? {
+              repository: {
+                url: `https://github.com/${selectedRepos[0]}`,
+                name: selectedRepos[0],
+              }
+            } : {}),
           }),
         });
 
