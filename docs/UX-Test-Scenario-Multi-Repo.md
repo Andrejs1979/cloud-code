@@ -283,12 +283,25 @@ Sessions: 3 recent mock sessions
 ## Visual Verification Checklist
 
 ### Repository Selector (Sessions Tab)
-- [x] Dropdown opens smoothly
+- [x] Dropdown opens smoothly with fade/scale animation
 - [x] Checkboxes have clear visual state (checked/unchecked)
 - [x] "Select All" button styled as secondary button
 - [x] "Clear" button styled as secondary button
 - [x] Selected repos appear as chips below input
 - [x] Chips have X button to deselect individual repos
+
+### Modal Interaction ✅ NEW (v3.1.0)
+- [x] Modal opens with smooth fade-in animation (200ms)
+- [x] Modal opens with scale animation (spring from 0.9 to 1.0)
+- [x] Modal closes with smooth fade-out animation (150ms)
+- [x] Clicking backdrop (outside modal) closes modal
+- [x] X button closes modal
+- [x] "Done" button closes modal
+- [x] Checkboxes toggle without detachment errors
+- [x] Row click toggles checkbox correctly
+- [x] Modal has proper shadow/elevation
+- [x] Android ripple effect on touch
+- [x] Modal renders above all content (proper z-index)
 
 ### Status Messages
 - [x] Loading spinner appears during processing
