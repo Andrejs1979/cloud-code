@@ -3,6 +3,8 @@
  *
  * Provides error tracking and performance monitoring for Cloudflare Workers.
  * Docs: https://docs.sentry.io/platforms/javascript/guides/cloudflare-workers/
+ *
+ * NOTE: Sentry is optional. Set SENTRY_DSN environment variable to enable.
  */
 
 import * as Sentry from '@sentry/cloudflare';
@@ -86,6 +88,11 @@ export function initSentry(env: Env, request: Request): void {
  * Capture an exception and send it to Sentry
  */
 export function captureError(error: Error | unknown, context?: Context): void {
+  if (!isSentryEnabled(undefined as unknown as Env)) {
+    logWithContext('SENTRY', 'Sentry not enabled, skipping error capture', { error });
+    return;
+  }
+
   logWithContext('SENTRY', 'Capturing error', { error, context });
 
   if (error instanceof Error) {
@@ -107,6 +114,10 @@ export function captureMessageLevel(
   level: 'info' | 'warning' | 'error' = 'info',
   context?: Context
 ): void {
+  if (!isSentryEnabled(undefined as unknown as Env)) {
+    return;
+  }
+
   logWithContext('SENTRY', `Capturing ${level} message`, { message });
 
   captureMessage(message, {
@@ -129,6 +140,11 @@ export async function withPerformanceTracking<T>(
   fn: () => Promise<T>,
   description?: string
 ): Promise<T> {
+  // Skip if Sentry not enabled
+  if (!isSentryEnabled(undefined as unknown as Env)) {
+    return fn();
+  }
+
   return startSpan(
     {
       op: operation,
@@ -153,6 +169,10 @@ export async function withPerformanceTracking<T>(
  * Set user context for Sentry
  */
 export function setSentryUser(user: { id: string; email?: string; username?: string }): void {
+  if (!isSentryEnabled(undefined as unknown as Env)) {
+    return;
+  }
+
   withIsolationScope((scope) => {
     scope.setUser(user);
   });
@@ -162,6 +182,10 @@ export function setSentryUser(user: { id: string; email?: string; username?: str
  * Set tags for Sentry context
  */
 export function setSentryTags(tags: Record<string, string | number | boolean>): void {
+  if (!isSentryEnabled(undefined as unknown as Env)) {
+    return;
+  }
+
   withIsolationScope((scope) => {
     scope.setTags(tags);
   });
@@ -171,6 +195,10 @@ export function setSentryTags(tags: Record<string, string | number | boolean>): 
  * Set extra data for Sentry context
  */
 export function setSentryExtra(data: Record<string, unknown>): void {
+  if (!isSentryEnabled(undefined as unknown as Env)) {
+    return;
+  }
+
   withIsolationScope((scope) => {
     scope.setExtras(data);
   });
@@ -221,6 +249,10 @@ export function addRequestBreadcrumb(
   message: string,
   data?: Record<string, unknown>
 ): void {
+  if (!isSentryEnabled(undefined as unknown as Env)) {
+    return;
+  }
+
   withIsolationScope((scope) => {
     scope.addBreadcrumb({
       category,

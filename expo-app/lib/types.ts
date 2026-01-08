@@ -7,6 +7,12 @@ export interface DashboardStats {
   successRate: number;
   repositories: string[];
   claudeKeyConfigured?: boolean;
+  installationUrl?: string;
+}
+
+export interface RepositoriesResponse {
+  repositories: RepositoryDetail[];
+  installationUrl?: string;
 }
 
 export interface Task {
@@ -50,6 +56,23 @@ export interface Repository {
   url: string;
   name: string;
   branch?: string;
+  full_name?: string;
+  owner?: string;
+  private?: boolean;
+  description?: string;
+  default_branch?: string;
+}
+
+export interface RepositoryDetail {
+  full_name: string;
+  name: string;
+  owner: string;
+  private: boolean;
+  description: string;
+  default_branch: string;
+  html_url?: string;
+  issues_count?: number;
+  last_updated?: string;
 }
 
 // SSE Event types for interactive sessions

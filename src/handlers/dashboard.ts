@@ -14,6 +14,7 @@ export interface DashboardStats {
   successRate: number;
   repositories: string[];
   claudeKeyConfigured?: boolean;
+  installationUrl?: string;
 }
 
 export interface Task {
@@ -342,6 +343,7 @@ async function handleGetStats(env: { GITHUB_APP_CONFIG: any; ANTHROPIC_API_KEY?:
     let repositories: string[] = [];
     let repositoryCount = 0;
     let totalWebhooks = 0;
+    let installationUrl: string | undefined;
 
     if (configText) {
       try {
@@ -349,6 +351,12 @@ async function handleGetStats(env: { GITHUB_APP_CONFIG: any; ANTHROPIC_API_KEY?:
         repositoryCount = config.repositories?.length || 0;
         // Extract repository full names
         repositories = (config.repositories || []).map((repo: any) => repo.full_name || repo.name || String(repo));
+
+        // Build installation settings URL
+        if (config.owner?.login && config.installationId) {
+          const ownerType = config.owner.type === 'Organization' ? 'organizations' : 'settings';
+          installationUrl = `https://github.com/${ownerType}/${config.owner.login}/settings/installations/${config.installationId}`;
+        }
 
         // Get webhook stats from DO
         const webhookResponse = await configStub.fetch(new Request('http://internal/get-webhook-stats'));
@@ -372,7 +380,8 @@ async function handleGetStats(env: { GITHUB_APP_CONFIG: any; ANTHROPIC_API_KEY?:
       activeSessions: sessions.size,
       successRate: totalWebhooks > 0 ? 95 : 0,
       repositories,
-      claudeKeyConfigured: !!env.ANTHROPIC_API_KEY && env.ANTHROPIC_API_KEY.length > 0
+      claudeKeyConfigured: !!env.ANTHROPIC_API_KEY && env.ANTHROPIC_API_KEY.length > 0,
+      installationUrl
     };
 
     logWithContext('DASHBOARD_API', 'Returning stats', dashboardStats);
@@ -416,19 +425,39 @@ async function handleGetRepositories(env: { GITHUB_APP_CONFIG: any }): Promise<R
 
     const config = JSON.parse(configText);
 
-    // Transform repositories to a simpler format
-    const repositories = (config.repositories || []).map((repo: any) => ({
-      full_name: repo.full_name || repo.name || String(repo),
-      name: repo.name || repo.full_name || String(repo),
-      owner: repo.owner?.login || repo.full_name?.split('/')[0] || 'unknown',
-      private: repo.private || false,
-      description: repo.description || '',
-      default_branch: repo.default_branch || 'main'
-    }));
+    // Build installation settings URL
+    let installationUrl: string | undefined;
+    if (config.owner?.login && config.installationId) {
+      const ownerType = config.owner.type === 'Organization' ? 'organizations' : 'settings';
+      installationUrl = `https://github.com/${ownerType}/${config.owner.login}/settings/installations/${config.installationId}`;
+    }
 
-    logWithContext('DASHBOARD_API', 'Returning repositories', { count: repositories.length });
+    // Transform repositories to a detailed format
+    const repositories = (config.repositories || []).map((repo: any) => {
+      const fullName = repo.full_name || repo.name || String(repo);
+      const name = repo.name || repo.full_name?.split('/')[1] || String(repo);
+      const owner = repo.owner?.login || repo.full_name?.split('/')[0] || 'unknown';
 
-    return new Response(JSON.stringify(repositories), {
+      return {
+        full_name: fullName,
+        name,
+        owner,
+        private: repo.private || false,
+        description: repo.description || '',
+        default_branch: repo.default_branch || 'main',
+        html_url: `https://github.com/${fullName}`
+      };
+    });
+
+    logWithContext('DASHBOARD_API', 'Returning repositories', {
+      count: repositories.length,
+      installationUrl
+    });
+
+    return new Response(JSON.stringify({
+      repositories,
+      installationUrl
+    }), {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {

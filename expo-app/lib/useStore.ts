@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { DashboardStats, Task, Session, Issue, GitHubStatus } from './types';
+import type { DashboardStats, Task, Session, Issue, GitHubStatus, RepositoryDetail } from './types';
 import { api } from './api';
 
 interface AppState {
@@ -8,6 +8,7 @@ interface AppState {
   tasks: Task[];
   sessions: Session[];
   issues: Issue[];
+  repositories: RepositoryDetail[];
   status: GitHubStatus | null;
 
   // UI state
@@ -29,6 +30,7 @@ interface AppState {
   setTasks: (tasks: Task[]) => void;
   setSessions: (sessions: Session[]) => void;
   setIssues: (issues: Issue[]) => void;
+  setRepositories: (repos: RepositoryDetail[]) => void;
   setIsLoading: (isLoading: boolean) => void;
   setSelectedIssueFilter: (filter: 'All' | 'Open' | 'Processing' | 'Completed') => void;
 
@@ -44,6 +46,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   tasks: [],
   sessions: [],
   issues: [],
+  repositories: [],
   status: null,
   isLoading: false,
   isConfigured: false,
@@ -55,6 +58,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setTasks: (tasks) => set({ tasks }),
   setSessions: (sessions) => set({ sessions }),
   setIssues: (issues) => set({ issues }),
+  setRepositories: (repositories) => set({ repositories }),
   setIsLoading: (isLoading) => set({ isLoading }),
   setSelectedIssueFilter: (filter) => set({ selectedIssueFilter: filter }),
 
@@ -74,12 +78,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ isLoading: true });
 
     try {
-      const [statusRes, tasksRes, sessionsRes, issuesRes, statsRes] = await Promise.all([
+      const [statusRes, tasksRes, sessionsRes, issuesRes, statsRes, reposRes] = await Promise.all([
         api.getStatus().catch(() => null),
         api.getTasks().catch(() => []),
         api.getSessions().catch(() => []),
         api.getIssues().catch(() => []),
         api.getStats().catch(() => null),
+        api.getRepositories().catch(() => []),
       ]);
 
       set({
@@ -88,6 +93,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         sessions: sessionsRes,
         issues: issuesRes,
         stats: statsRes,
+        repositories: reposRes,
         isConfigured: statusRes?.configured ?? false,
         isLoading: false,
       });

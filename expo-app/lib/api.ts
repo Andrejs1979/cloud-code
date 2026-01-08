@@ -1,5 +1,5 @@
 import ky from 'ky';
-import type { DashboardStats, Task, Session, Issue, GitHubStatus } from './types';
+import type { DashboardStats, Task, Session, Issue, GitHubStatus, RepositoryDetail, RepositoriesResponse } from './types';
 
 // Get the base URL based on platform
 const getBaseURL = () => {
@@ -40,6 +40,12 @@ export const api = {
   // Stats endpoint
   getStats: (): Promise<DashboardStats> =>
     apiClient.get('api/stats').json(),
+
+  // Repositories endpoint
+  getRepositories: async (): Promise<RepositoryDetail[]> => {
+    const response = await apiClient.get('api/repositories').json<RepositoriesResponse>();
+    return response.repositories || [];
+  },
 
   // Test webhook
   testWebhook: (issueNumber?: number): Promise<{ message: string; issueNumber?: number }> =>
