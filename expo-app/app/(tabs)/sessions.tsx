@@ -19,6 +19,106 @@ interface ChatMessage {
   };
 }
 
+// Language display name mapping for better code block labels
+const LANGUAGE_DISPLAY_NAMES: Record<string, string> = {
+  'js': 'JavaScript',
+  'javascript': 'JavaScript',
+  'ts': 'TypeScript',
+  'typescript': 'TypeScript',
+  'jsx': 'JSX',
+  'tsx': 'TSX',
+  'py': 'Python',
+  'python': 'Python',
+  'rb': 'Ruby',
+  'ruby': 'Ruby',
+  'go': 'Go',
+  'golang': 'Go',
+  'rs': 'Rust',
+  'rust': 'Rust',
+  'java': 'Java',
+  'kt': 'Kotlin',
+  'kotlin': 'Kotlin',
+  'swift': 'Swift',
+  'c': 'C',
+  'cpp': 'C++',
+  'c++': 'C++',
+  'cs': 'C#',
+  'csharp': 'C#',
+  'php': 'PHP',
+  'sh': 'Shell',
+  'shell': 'Shell',
+  'bash': 'Shell',
+  'zsh': 'Zsh',
+  'fish': 'Fish',
+  'powershell': 'PowerShell',
+  'ps1': 'PowerShell',
+  'sql': 'SQL',
+  'html': 'HTML',
+  'xml': 'XML',
+  'css': 'CSS',
+  'scss': 'SCSS',
+  'sass': 'Sass',
+  'less': 'Less',
+  'json': 'JSON',
+  'yaml': 'YAML',
+  'yml': 'YAML',
+  'toml': 'TOML',
+  'md': 'Markdown',
+  'markdown': 'Markdown',
+  'dockerfile': 'Dockerfile',
+  'docker': 'Docker',
+  'nginx': 'Nginx',
+  'apache': 'Apache',
+  'vim': 'Vim',
+  'viml': 'VimL',
+  'emacs': 'Emacs Lisp',
+  'elisp': 'Emacs Lisp',
+  'lua': 'Lua',
+  'r': 'R',
+  'scala': 'Scala',
+  'groovy': 'Groovy',
+  'perl': 'Perl',
+  'pl': 'Perl',
+  'dart': 'Dart',
+  'flutter': 'Flutter',
+  'ex': 'Elixir',
+  'elixir': 'Elixir',
+  'exs': 'Elixir',
+  'erl': 'Erlang',
+  'erlang': 'Erlang',
+  'hs': 'Haskell',
+  'haskell': 'Haskell',
+  'fs': 'F#',
+  'fsharp': 'F#',
+  'ocaml': 'OCaml',
+  'ml': 'OCaml',
+  'nim': 'Nim',
+  'julia': 'Julia',
+  'matlab': 'MATLAB',
+  'tex': 'LaTeX',
+  'latex': 'LaTeX',
+  'make': 'Makefile',
+  'makefile': 'Makefile',
+  'cmake': 'CMake',
+  'gradle': 'Gradle',
+  'maven': 'Maven',
+  'pom': 'Maven',
+  'vue': 'Vue',
+  'svelte': 'Svelte',
+  'angular': 'Angular',
+  'next': 'Next.js',
+  'nextjs': 'Next.js',
+  'nuxt': 'Nuxt',
+  'react': 'React',
+  'solid': 'Solid',
+  'astro': 'Astro',
+};
+
+function getLanguageDisplayName(lang: string): string {
+  const normalized = lang.toLowerCase();
+  return LANGUAGE_DISPLAY_NAMES[normalized] || lang;
+}
+
 // Parse markdown for code blocks
 function parseMarkdown(text: string): Array<{ type: 'text' | 'code' | 'pr'; content: string; language?: string; prNumber?: number; prUrl?: string }> {
   const parts: Array<{ type: 'text' | 'code' | 'pr'; content: string; language?: string; prNumber?: number; prUrl?: string }> = [];
@@ -72,10 +172,11 @@ function parseMarkdown(text: string): Array<{ type: 'text' | 'code' | 'pr'; cont
 
 // Code block component
 function CodeBlock({ content, language, onCopy }: { content: string; language: string; onCopy: () => void }) {
+  const displayLanguage = getLanguageDisplayName(language);
   return (
     <View style={styles.codeBlockContainer}>
       <View style={styles.codeHeader}>
-        <Text style={styles.codeLanguage}>{language}</Text>
+        <Text style={styles.codeLanguage}>{displayLanguage}</Text>
         <Pressable onPress={onCopy} style={styles.copyButton}>
           <Ionicons name="copy-outline" size={16} color={colors.mutedForeground} />
         </Pressable>
@@ -1159,11 +1260,12 @@ function ChatScreenContent() {
               ]}
               onPress={() => sendMessage()}
               disabled={!inputText.trim() || isProcessing}
+              pointerEvents={(!inputText.trim() || isProcessing) ? 'none' : 'auto'}
             >
               {isProcessing ? (
-                <ActivityIndicator size="small" color="white" />
+                <ActivityIndicator size="small" color={inputText.trim() ? 'white' : colors.mutedForeground} />
               ) : (
-                <Ionicons name="send" size={20} color="white" />
+                <Ionicons name="send" size={20} color={inputText.trim() ? 'white' : colors.mutedForeground} />
               )}
             </Pressable>
           </View>
