@@ -5,6 +5,12 @@ import { colors } from '../../lib/styles';
 import { useAppStore, RepositoryDetail } from '../../lib/useStore';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 
+// Constants for request handling
+const REQUEST_TIMEOUT_MS = 30000; // 30 second timeout
+const MAX_SESSION_STORAGE_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const SESSION_STORAGE_KEY = 'claude_chat_sessions';
+const CURRENT_SESSION_KEY = 'claude_chat_current';
+
 // Message types
 interface ChatMessage {
   id: string;
@@ -18,6 +24,77 @@ interface ChatMessage {
     prNumber?: number;
   };
 }
+
+// Session storage type
+interface ChatSession {
+  id: string;
+  messages: Omit<ChatMessage, 'isStreaming'>[];
+  sessionId: string | null;
+  selectedRepos: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+// LocalStorage helpers for web platform
+const storage = {
+  getItem: (key: string): string | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem: (key: string, value: string): boolean => {
+    if (typeof window === 'undefined') return false;
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  removeItem: (key: string): void => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.removeItem(key);
+    } catch {}
+  },
+};
+
+// Session persistence helpers
+const saveCurrentSession = (messages: ChatMessage[], sessionId: string | null, selectedRepos: string[]) => {
+  const session: ChatSession = {
+    id: 'current',
+    messages: messages.map(({ isStreaming, ...msg }) => msg),
+    sessionId,
+    selectedRepos,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  storage.setItem(CURRENT_SESSION_KEY, JSON.stringify(session));
+};
+
+const loadCurrentSession = (): ChatSession | null => {
+  const data = storage.getItem(CURRENT_SESSION_KEY);
+  if (!data) return null;
+
+  try {
+    const session = JSON.parse(data) as ChatSession;
+    // Check if session is too old
+    if (Date.now() - session.updatedAt > MAX_SESSION_STORAGE_AGE_MS) {
+      storage.removeItem(CURRENT_SESSION_KEY);
+      return null;
+    }
+    return session;
+  } catch {
+    return null;
+  }
+};
+
+const clearCurrentSession = () => {
+  storage.removeItem(CURRENT_SESSION_KEY);
+};
 
 // Language display name mapping for better code block labels
 const LANGUAGE_DISPLAY_NAMES: Record<string, string> = {
@@ -478,6 +555,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.muted,
     opacity: 0.5,
   },
+  cancelButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   emptyState: {
     flex: 1,
     alignItems: 'center',
@@ -836,11 +921,28 @@ function ChatScreenContent() {
   const [selectedRepos, setSelectedRepos] = useState<string[]>([]);
   const [showRepoModal, setShowRepoModal] = useState(false);
   const [lastPrompt, setLastPrompt] = useState<string>('');
+  const [canCancel, setCanCancel] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Load saved session on mount
   useEffect(() => {
+    const savedSession = loadCurrentSession();
+    if (savedSession && savedSession.messages.length > 0) {
+      setMessages(savedSession.messages as ChatMessage[]);
+      setSessionId(savedSession.sessionId);
+      setSelectedRepos(savedSession.selectedRepos);
+    }
     refresh();
   }, []);
+
+  // Save session whenever messages or session state changes
+  useEffect(() => {
+    if (messages.length > 0 || sessionId) {
+      saveCurrentSession(messages, sessionId, selectedRepos);
+    }
+  }, [messages, sessionId, selectedRepos]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -849,6 +951,18 @@ function ChatScreenContent() {
       }, 100);
     }
   }, [messages]);
+
+  // Cleanup timeout and abort controller on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   const copyToClipboard = useCallback(async (content: string) => {
     if (Platform.OS === 'web') {
@@ -862,6 +976,29 @@ function ChatScreenContent() {
     setLastPrompt('');
     setInputText('');
     setSelectedRepos([]);
+    clearCurrentSession();
+  }, []);
+
+  const cancelRequest = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    setIsProcessing(false);
+    setCanCancel(false);
+
+    // Add a cancellation message
+    const cancelMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'system',
+      content: 'Request cancelled',
+      timestamp: Date.now(),
+    };
+    setMessages((prev) => [...prev, cancelMessage]);
   }, []);
 
   const toggleRepo = useCallback((repoName: string) => {
@@ -888,6 +1025,11 @@ function ChatScreenContent() {
     const text = (promptText || inputText).trim();
     if (!text || isProcessing) return;
 
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
@@ -898,6 +1040,27 @@ function ChatScreenContent() {
     setInputText('');
     setLastPrompt(text);
     setIsProcessing(true);
+    setCanCancel(true);
+
+    // Create new abort controller for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    // Set up timeout
+    const timeoutId = setTimeout(() => {
+      abortController.abort();
+      setIsProcessing(false);
+      setCanCancel(false);
+      const timeoutMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Request timed out after ${REQUEST_TIMEOUT_MS / 1000} seconds. Please try again.`,
+        timestamp: Date.now(),
+        error: true,
+      };
+      setMessages((prev) => [...prev, timeoutMessage]);
+    }, REQUEST_TIMEOUT_MS);
+    timeoutRef.current = timeoutId;
 
     try {
       // If no session, start a new one
@@ -908,7 +1071,6 @@ function ChatScreenContent() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: text,
-            // Use 'repository' for single repo, 'repositories' for multiple
             ...(isMultiRepo ? {
               repositories: selectedRepos.map(r => ({
                 url: `https://github.com/${r}`,
@@ -926,10 +1088,12 @@ function ChatScreenContent() {
               createPR: true,
             },
           }),
+          signal: abortController.signal,
         });
 
         if (!response.ok) {
-          throw new Error('Failed to start session');
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `Failed to start session (${response.status})`);
         }
 
         const newSessionId = response.headers.get('X-Session-Id');
@@ -937,7 +1101,7 @@ function ChatScreenContent() {
           setSessionId(newSessionId);
         }
 
-        await processSSEStream(response);
+        await processSSEStream(response, abortController);
       } else {
         const isMultiRepo = selectedRepos.length > 1;
         const response = await fetch(`/interactive/${sessionId}/message`, {
@@ -945,7 +1109,6 @@ function ChatScreenContent() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: text,
-            // Use 'repository' for single repo, 'repositories' for multiple
             ...(isMultiRepo ? {
               repositories: selectedRepos.map(r => ({
                 url: `https://github.com/${r}`,
@@ -958,26 +1121,63 @@ function ChatScreenContent() {
               }
             } : {}),
           }),
+          signal: abortController.signal,
         });
 
         if (!response.ok) {
-          throw new Error('Failed to send message');
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `Failed to send message (${response.status})`);
         }
 
-        await processSSEStream(response);
+        await processSSEStream(response, abortController);
+      }
+
+      // Clear timeout on success
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
     } catch (error) {
+      // Clear timeout on error
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
+      // Check if error was due to abort (user cancellation or timeout)
+      if (error instanceof Error && error.name === 'AbortError') {
+        // If it's a timeout, we already handled it above
+        // If it's user cancellation, we don't need to show an error
+        if (!canCancel) {
+          // Request was cancelled, already handled
+          return;
+        }
+      }
+
       console.error('Error sending message:', error);
-      const errorMessage: ChatMessage = {
+      let errorMessage = 'Something went wrong. Please try again.';
+      if (error instanceof Error) {
+        if (error.message.includes('Failed to fetch')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        } else if (error.message.includes('timeout')) {
+          errorMessage = 'Request timed out. Please try again.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      const errorMsg: ChatMessage = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: `Something went wrong. ${error instanceof Error ? error.message : 'Unknown error'}`,
+        content: errorMessage,
         timestamp: Date.now(),
         error: true,
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsProcessing(false);
+      setCanCancel(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -987,7 +1187,7 @@ function ChatScreenContent() {
     await sendMessage(lastPrompt);
   }, [lastPrompt, isProcessing, sendMessage]);
 
-  const processSSEStream = async (response: Response) => {
+  const processSSEStream = async (response: Response, abortController: AbortController) => {
     const reader = response.body?.getReader();
     if (!reader) {
       throw new Error('No response body');
@@ -1007,19 +1207,12 @@ function ChatScreenContent() {
     setMessages((prev) => [...prev, streamingMessage]);
 
     let currentEventType = '';
-    const streamStartTime = Date.now();
 
     try {
       while (true) {
-        if (Date.now() - streamStartTime > 90000) {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMessageId
-                ? { ...m, isStreaming: false, content: assistantContent || 'Request timed out.' }
-                : m
-            )
-          );
-          break;
+        // Check for abort
+        if (abortController.signal.aborted) {
+          throw new Error('Cancelled');
         }
 
         const { done, value } = await reader.read();
@@ -1113,6 +1306,7 @@ function ChatScreenContent() {
                 );
               }
             } catch (e) {
+              // Ignore JSON parse errors for incomplete chunks
             }
           }
         }
@@ -1126,6 +1320,10 @@ function ChatScreenContent() {
         )
       );
     } catch (error) {
+      if (error instanceof Error && error.message === 'Cancelled') {
+        // Request was cancelled, don't add error message
+        return;
+      }
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantMessageId
@@ -1253,21 +1451,32 @@ function ChatScreenContent() {
               editable={!isProcessing}
               onSubmitEditing={() => sendMessage()}
             />
-            <Pressable
-              style={[
-                styles.sendButton,
-                (!inputText.trim() || isProcessing) && styles.sendButtonDisabled,
-              ]}
-              onPress={() => sendMessage()}
-              disabled={!inputText.trim() || isProcessing}
-              pointerEvents={(!inputText.trim() || isProcessing) ? 'none' : 'auto'}
-            >
-              {isProcessing ? (
-                <ActivityIndicator size="small" color={inputText.trim() ? 'white' : colors.mutedForeground} />
-              ) : (
-                <Ionicons name="send" size={20} color={inputText.trim() ? 'white' : colors.mutedForeground} />
-              )}
-            </Pressable>
+            {canCancel ? (
+              // Show cancel button when request is in progress and can be cancelled
+              <Pressable
+                style={styles.cancelButton}
+                onPress={cancelRequest}
+              >
+                <Ionicons name="close-circle" size={20} color="#ef4444" />
+              </Pressable>
+            ) : (
+              // Show send button when not processing
+              <Pressable
+                style={[
+                  styles.sendButton,
+                  (!inputText.trim() || isProcessing) && styles.sendButtonDisabled,
+                ]}
+                onPress={() => sendMessage()}
+                disabled={!inputText.trim() || isProcessing}
+                pointerEvents={(!inputText.trim() || isProcessing) ? 'none' : 'auto'}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator size="small" color={inputText.trim() ? 'white' : colors.mutedForeground} />
+                ) : (
+                  <Ionicons name="send" size={20} color={inputText.trim() ? 'white' : colors.mutedForeground} />
+                )}
+              </Pressable>
+            )}
           </View>
         </View>
 
