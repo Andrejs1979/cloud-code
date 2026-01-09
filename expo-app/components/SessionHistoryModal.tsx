@@ -59,6 +59,7 @@ export interface SessionHistoryModalProps {
   onClose: () => void;
   onLoadSession: (sessionId: string) => void;
   onDeleteSession: (sessionId: string) => void;
+  onReplaySession?: (sessionId: string) => void;
   sessions: SessionListItem[];
   isLoading?: boolean;
 }
@@ -145,10 +146,11 @@ interface SessionItemProps {
   session: SessionListItem;
   onPress: (sessionId: string) => void;
   onDelete: (sessionId: string) => void;
+  onReplay?: (sessionId: string) => void;
   searchQuery: string;
 }
 
-function SessionItem({ session, onPress, onDelete, searchQuery }: SessionItemProps) {
+function SessionItem({ session, onPress, onDelete, onReplay, searchQuery }: SessionItemProps) {
   const handlePress = useCallback(() => {
     haptics.cardPress();
     onPress(session.id);
@@ -217,6 +219,22 @@ function SessionItem({ session, onPress, onDelete, searchQuery }: SessionItemPro
           </View>
         </View>
 
+        {onReplay && (
+          <Pressable
+            onPress={() => {
+              haptics.buttonPress();
+              onReplay(session.id);
+            }}
+            style={({ pressed }) => [styles.replayButton, pressed && styles.replayButtonPressed]}
+            android_ripple={{ color: colors.border, foreground: true }}
+            accessibilityLabel="Replay this session"
+            accessibilityHint="Watch a step-by-step replay of this session"
+            accessibilityRole="button"
+          >
+            <Ionicons name="play-circle" size={iconSize.lg} color={colors.brand} />
+          </Pressable>
+        )}
+
         <Ionicons name="chevron-forward" size={iconSize.md} color={colors.mutedForeground} style={styles.sessionChevron} />
       </Pressable>
     </SwipeableItem>
@@ -232,10 +250,11 @@ interface SessionGroupProps {
   sessions: SessionListItem[];
   onPress: (sessionId: string) => void;
   onDelete: (sessionId: string) => void;
+  onReplay?: (sessionId: string) => void;
   searchQuery: string;
 }
 
-function SessionGroup({ label, sessions, onPress, onDelete, searchQuery }: SessionGroupProps) {
+function SessionGroup({ label, sessions, onPress, onDelete, onReplay, searchQuery }: SessionGroupProps) {
   const [isExpanded, setIsExpanded] = useState(true);
 
   const toggleExpanded = useCallback(() => {
@@ -274,6 +293,7 @@ function SessionGroup({ label, sessions, onPress, onDelete, searchQuery }: Sessi
               session={session}
               onPress={onPress}
               onDelete={onDelete}
+              onReplay={onReplay}
               searchQuery={searchQuery}
             />
           ))}
@@ -329,6 +349,7 @@ export function SessionHistoryModal({
   onClose,
   onLoadSession,
   onDeleteSession,
+  onReplaySession,
   sessions,
   isLoading = false,
 }: SessionHistoryModalProps) {
@@ -580,6 +601,7 @@ export function SessionHistoryModal({
                   sessions={groupSessions}
                   onPress={handleLoadSession}
                   onDelete={handleDeleteSession}
+                  onReplay={onReplaySession}
                   searchQuery={searchQuery}
                 />
               ))
@@ -806,6 +828,13 @@ const styles = StyleSheet.create({
   },
   sessionChevron: {
     marginLeft: spacing[2],
+  },
+  replayButton: {
+    padding: spacing[2],
+    marginRight: spacing[1],
+  },
+  replayButtonPressed: {
+    opacity: 0.6,
   },
   emptyState: {
     flex: 1,

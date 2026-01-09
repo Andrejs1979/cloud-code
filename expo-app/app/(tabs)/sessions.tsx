@@ -9,6 +9,7 @@ import { ErrorIds } from '../../constants/errorIds';
 import { SessionHistoryModal, SessionListItem } from '../../components/SessionHistoryModal';
 import { OfflineBanner } from '../../components/OfflineBanner';
 import { OfflineQueue } from '../../components/OfflineQueue';
+import { SessionReplay, SessionData, SessionEvent } from '../../components/SessionReplay';
 
 // Request handling constants
 const REQUEST_TIMEOUT_MS = 30000; // 30 second timeout
@@ -1128,6 +1129,8 @@ function ChatScreenContent() {
   const [canCancel, setCanCancel] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showOfflineQueueModal, setShowOfflineQueueModal] = useState(false);
+  const [showSessionReplay, setShowSessionReplay] = useState(false);
+  const [replaySession, setReplaySession] = useState<SessionData | null>(null);
   const [sessionHistory, setSessionHistory] = useState<SessionListItem[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -1280,6 +1283,67 @@ function ChatScreenContent() {
     // Refresh the history list
     const updatedHistory = getSessionHistory();
     setSessionHistory(updatedHistory);
+  }, []);
+
+  const handleReplaySession = useCallback((sessionId: string) => {
+    const history = getSessionHistory();
+    const chatSession = history.find(s => s.id === sessionId);
+    if (!chatSession) {
+      logError(ErrorIds.SESSION_LOAD_FAILED, new Error('Session not found'), { sessionId });
+      Alert.alert('Error', 'Could not find this session.');
+      return;
+    }
+
+    // Convert ChatSession to SessionData format for replay
+    const events: SessionEvent[] = chatSession.messages.flatMap((msg, idx) => {
+      const baseEvent: SessionEvent = {
+        id: `${sessionId}-${idx}`,
+        type: msg.role === 'user' ? 'status' as SessionEvent['type'] : 'claude_delta' as SessionEvent['type'],
+        timestamp: msg.timestamp,
+        content: msg.content,
+      };
+
+      // For assistant messages, add start/end events
+      if (msg.role === 'assistant') {
+        return [
+          {
+            id: `${sessionId}-${idx}-start`,
+            type: 'claude_start',
+            timestamp: msg.timestamp,
+          } as SessionEvent,
+          baseEvent,
+          {
+            id: `${sessionId}-${idx}-end`,
+            type: 'claude_end',
+            timestamp: msg.timestamp,
+          } as SessionEvent,
+        ];
+      }
+
+      return [baseEvent];
+    });
+
+    const replayData: SessionData = {
+      id: chatSession.id,
+      prompt: chatSession.title,
+      repository: chatSession.selectedRepos.length > 0 ? {
+        url: `https://github.com/${chatSession.selectedRepos[0]}`,
+        name: chatSession.selectedRepos[0],
+      } : undefined,
+      startTime: chatSession.createdAt,
+      endTime: chatSession.updatedAt,
+      status: 'completed',
+      events,
+      metadata: {
+        sessionId: chatSession.sessionId,
+        selectedRepos: chatSession.selectedRepos,
+        messageCount: chatSession.messages.length,
+      },
+    };
+
+    setReplaySession(replayData);
+    setShowSessionReplay(true);
+    setShowHistoryModal(false);
   }, []);
 
   const sendMessage = async (promptText?: string) => {
@@ -1828,8 +1892,22 @@ function ChatScreenContent() {
           onClose={() => setShowHistoryModal(false)}
           onLoadSession={handleLoadSession}
           onDeleteSession={handleDeleteSession}
+          onReplaySession={handleReplaySession}
           sessions={sessionHistory}
         />
+
+        {/* Session replay modal */}
+        <Modal
+          visible={showSessionReplay}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setShowSessionReplay(false)}
+        >
+          <SessionReplay
+            session={replaySession}
+            onClose={() => setShowSessionReplay(false)}
+          />
+        </Modal>
 
         {/* Offline queue modal */}
         <Modal
