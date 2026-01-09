@@ -1,13 +1,36 @@
 import React from 'react';
 import { create } from 'zustand';
-import type { DashboardStats, Task, Session, Issue, GitHubStatus, RepositoryDetail } from './types';
+import type {
+  DashboardStats,
+  Task,
+  Session,
+  Issue,
+  GitHubStatus,
+  RepositoryDetail,
+  UserAccount,
+  AuthTokens,
+  LoginCredentials,
+  RegisterCredentials,
+} from './types';
 import { api } from './api';
 import { cacheStorage, sessionDraftStorage, settingsStorage, offlineState } from './offlineStorage';
 import { sessionPersistence } from './sessionPersistence';
 import { syncManager } from './syncManager';
+import { userService } from './userService';
 
 // Re-export types for convenience
-export type { DashboardStats, Task, Session, Issue, GitHubStatus, RepositoryDetail };
+export type {
+  DashboardStats,
+  Task,
+  Session,
+  Issue,
+  GitHubStatus,
+  RepositoryDetail,
+  UserAccount,
+  AuthTokens,
+  LoginCredentials,
+  RegisterCredentials,
+};
 
 interface AppState {
   // Data
@@ -17,6 +40,11 @@ interface AppState {
   issues: Issue[];
   repositories: RepositoryDetail[];
   status: GitHubStatus | null;
+
+  // User authentication
+  user: UserAccount | null;
+  isAuthenticated: boolean;
+  isAuthenticating: boolean;
 
   // UI state
   isLoading: boolean;
@@ -60,6 +88,15 @@ interface AppState {
 
   // Initialize with offline data
   initializeFromCache: () => Promise<void>;
+
+  // Authentication actions
+  login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: string }>;
+  register: (credentials: RegisterCredentials) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
+  updateUser: (updates: Partial<UserAccount>) => Promise<void>;
+  canCreateSession: () => boolean;
+  canAddRepository: () => boolean;
 }
 
 export const useAppStore = create<AppState>((set, get) => {
@@ -77,6 +114,9 @@ export const useAppStore = create<AppState>((set, get) => {
     issues: [],
     repositories: [],
     status: null,
+    user: null,
+    isAuthenticated: false,
+    isAuthenticating: false,
     isLoading: false,
     isConfigured: false,
     selectedIssueFilter: 'All',
@@ -155,6 +195,26 @@ export const useAppStore = create<AppState>((set, get) => {
 
     // Initialize from cache
     initializeFromCache: async () => {
+      // Load cached user session
+      const savedUser = await userService.getUser();
+      const savedTokens = await userService.getTokens();
+      if (savedUser && savedTokens) {
+        set({
+          user: savedUser,
+          isAuthenticated: true,
+        });
+        // Refresh user data from server
+        try {
+          const freshUser = await userService.getCurrentUser();
+          if (freshUser) {
+            set({ user: freshUser });
+            await userService.saveUser(freshUser);
+          }
+        } catch {
+          // Server unavailable, use cached data
+        }
+      }
+
       // Load cached repositories
       const cachedRepos = await cacheStorage.getRepositories();
       if (cachedRepos && cachedRepos.length > 0) {
@@ -232,6 +292,111 @@ export const useAppStore = create<AppState>((set, get) => {
         console.error('Failed to refresh:', error);
         set({ isLoading: false });
       }
+    },
+
+    // Authentication actions
+    login: async (credentials) => {
+      set({ isAuthenticating: true });
+      try {
+        const result = await userService.login(credentials);
+        if (result.success && result.user && result.tokens) {
+          set({
+            user: result.user,
+            isAuthenticated: true,
+            isAuthenticating: false,
+          });
+          await userService.saveTokens(result.tokens);
+          await userService.saveUser(result.user);
+          return { success: true };
+        }
+        set({ isAuthenticating: false });
+        return { success: false, error: result.error || 'Login failed' };
+      } catch (error) {
+        set({ isAuthenticating: false });
+        return { success: false, error: 'Network error' };
+      }
+    },
+
+    register: async (credentials) => {
+      set({ isAuthenticating: true });
+      try {
+        const result = await userService.register(credentials);
+        if (result.success && result.user && result.tokens) {
+          set({
+            user: result.user,
+            isAuthenticated: true,
+            isAuthenticating: false,
+          });
+          await userService.saveTokens(result.tokens);
+          await userService.saveUser(result.user);
+          return { success: true };
+        }
+        set({ isAuthenticating: false });
+        return { success: false, error: result.error || 'Registration failed' };
+      } catch (error) {
+        set({ isAuthenticating: false });
+        return { success: false, error: 'Network error' };
+      }
+    },
+
+    logout: async () => {
+      set({ user: null, isAuthenticated: false });
+      await userService.clearTokens();
+      await userService.clearUser();
+    },
+
+    refreshUser: async () => {
+      const { isAuthenticated } = get();
+      if (!isAuthenticated) return;
+
+      try {
+        const user = await userService.getCurrentUser();
+        if (user) {
+          set({ user });
+          await userService.saveUser(user);
+        }
+      } catch (error) {
+        console.error('Failed to refresh user:', error);
+      }
+    },
+
+    updateUser: async (updates) => {
+      const { user } = get();
+      if (!user) return;
+
+      try {
+        const updated = await userService.updateProfile(updates);
+        if (updated) {
+          set({ user: updated });
+          await userService.saveUser(updated);
+        }
+      } catch (error) {
+        console.error('Failed to update user:', error);
+      }
+    },
+
+    canCreateSession: () => {
+      const { user } = get();
+      if (!user) return false;
+
+      const { sessionsThisMonth } = user.usage;
+      const { sessionsPerMonth } = user.limits;
+
+      // Unlimited for enterprise (-1)
+      if (sessionsPerMonth < 0) return true;
+      return sessionsThisMonth < sessionsPerMonth;
+    },
+
+    canAddRepository: () => {
+      const { user, repositories } = get();
+      if (!user) return false;
+
+      const { repositoryCount } = user.usage;
+      const { repositories: maxRepos } = user.limits;
+
+      // Unlimited for enterprise (-1)
+      if (maxRepos < 0) return true;
+      return repositoryCount < maxRepos;
     },
   };
 });

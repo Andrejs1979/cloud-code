@@ -1,4 +1,4 @@
-// Cache bust: v5
+// Cache bust: v6
 import { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -18,6 +18,8 @@ import { Button } from '../../components/Button';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { Toggle } from '../../components/Toggle';
 import { SettingsList } from '../../components/SettingsList';
+import { AccountSettings } from '../../components/AccountSettings';
+import { AuthModal, AuthMode } from '../../components/AuthModal';
 import { colors } from '../../lib/styles';
 import { spacing } from '../../lib/tokens/spacing';
 import { haptics } from '../../lib/haptics';
@@ -209,6 +211,8 @@ function SettingsScreenContent() {
   const toast = useToast();
 
   // Local state for settings
+  const [authModalVisible, setAuthModalVisible] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
@@ -423,6 +427,21 @@ function SettingsScreenContent() {
         },
       ]
     );
+  };
+
+  // Auth handlers
+  const handleOpenAuth = (mode: AuthMode = 'login') => {
+    setAuthMode(mode);
+    setAuthModalVisible(true);
+  };
+
+  const handleCloseAuth = () => {
+    setAuthModalVisible(false);
+  };
+
+  const handleAuthSuccess = () => {
+    toast.success('Authentication successful!');
+    refresh();
   };
 
   // Get theme display name
@@ -709,23 +728,16 @@ function SettingsScreenContent() {
         </View>
 
         {/* Account Information */}
-        <Text style={styles.sectionTitle}>Account</Text>
-        <View style={styles.card}>
-          <View style={styles.aboutRow}>
-            <Text style={styles.aboutLabel}>Status</Text>
-            <Text style={styles.aboutValue}>
-              {isGitHubConfigured ? 'Connected' : 'Guest'}
-            </Text>
-          </View>
-          <View style={styles.aboutRow}>
-            <Text style={styles.aboutLabel}>App Version</Text>
-            <Text style={styles.aboutValue}>{APP_VERSION}</Text>
-          </View>
-          <View style={styles.aboutRow}>
-            <Text style={styles.aboutLabel}>Build Date</Text>
-            <Text style={styles.aboutValue}>{APP_BUILD}</Text>
-          </View>
-        </View>
+        <AccountSettings onNavigateToAuth={() => handleOpenAuth('login')} />
+
+        {/* Auth Modal */}
+        <AuthModal
+          visible={authModalVisible}
+          mode={authMode}
+          onClose={handleCloseAuth}
+          onModeChange={setAuthMode}
+          onSuccess={handleAuthSuccess}
+        />
 
         {/* About */}
         <Text style={styles.sectionTitle}>About</Text>
@@ -740,7 +752,7 @@ function SettingsScreenContent() {
             AI-powered coding automation for GitHub issues and pull requests.
           </Text>
           <View style={[styles.row, { marginTop: spacing[2] }]}>
-            <Text style={styles.textXsMuted}>Version {APP_VERSION}</Text>
+            <Text style={styles.textXsMuted}>Version {APP_VERSION} (Build {APP_BUILD})</Text>
           </View>
         </View>
 

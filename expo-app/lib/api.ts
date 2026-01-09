@@ -37,7 +37,7 @@ const buildUrl = (path: string): string => {
   return path;
 };
 
-const apiClient = ky.create({
+export const apiClient = ky.create({
   prefixUrl: getBaseURL(),
   timeout: 30000,
   retry: 2,
@@ -57,26 +57,26 @@ const apiClient = ky.create({
 export const api = {
   // Status endpoints
   getStatus: (): Promise<GitHubStatus> =>
-    apiClient.get('gh-status').json(),
+    apiClient.get('gh-status').json<GitHubStatus>(),
 
   // Tasks endpoints
   getTasks: (): Promise<Task[]> =>
-    apiClient.get('api/tasks').json(),
+    apiClient.get('api/tasks').json<Task[]>(),
 
   createTask: (task: Partial<Task>): Promise<Task> =>
-    apiClient.post('api/tasks', { json: task }).json(),
+    apiClient.post('api/tasks', { json: task }).json<Task>(),
 
   // Sessions endpoints
   getSessions: (): Promise<Session[]> =>
-    apiClient.get('api/sessions').json(),
+    apiClient.get('api/sessions').json<Session[]>(),
 
   // Issues endpoints
   getIssues: (): Promise<Issue[]> =>
-    apiClient.get('api/issues').json(),
+    apiClient.get('api/issues').json<Issue[]>(),
 
   // Stats endpoint
   getStats: (): Promise<DashboardStats> =>
-    apiClient.get('api/stats').json(),
+    apiClient.get('api/stats').json<DashboardStats>(),
 
   // Repositories endpoint
   getRepositories: async (): Promise<RepositoryDetail[]> => {
@@ -86,7 +86,7 @@ export const api = {
 
   // Test webhook
   testWebhook: (issueNumber?: number): Promise<{ message: string; issueNumber?: number }> =>
-    apiClient.post('api/test-webhook', { json: { issueNumber } }).json(),
+    apiClient.post('api/test-webhook', { json: { issueNumber } }).json<{ message: string; issueNumber?: number }>(),
 };
 
 // SSE client for interactive sessions
@@ -126,7 +126,7 @@ export async function startInteractiveSession(
 
 export async function cancelSession(sessionId: string): Promise<{ success: boolean; message: string }> {
   const testModeParam = isTestMode() ? '?test=true' : '';
-  return apiClient.delete(`interactive/${sessionId}${testModeParam}`).json();
+  return apiClient.delete(`interactive/${sessionId}${testModeParam}`).json<{ success: boolean; message: string }>();
 }
 
 export async function getSessionStatus(sessionId: string): Promise<any> {

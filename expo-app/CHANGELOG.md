@@ -6,6 +6,15 @@ All notable changes to the Cloud Code mobile app will be documented in this file
 
 ### Added (2026-01-09)
 
+#### User Accounts & Authentication (Sprint 3) - IN PROGRESS
+- **NEW: User Account System** - Users can now create accounts and sign in
+  - Account types: Free (10 sessions/mo, 3 repos), Pro (100 sessions/mo, 50 repos), Enterprise (unlimited)
+  - Email/password authentication with secure token storage
+  - Usage tracking for sessions and repositories
+  - Account settings with profile management
+  - Tier badge display and upgrade prompts
+  - Sign in/Register modal with form validation
+
 #### Session History Modal
 - **NEW: Session History Modal** - Users can now browse and access historical chat sessions
   - Search and filter sessions by title or ID
@@ -30,9 +39,18 @@ All notable changes to the Cloud Code mobile app will be documented in this file
 
 #### New Files
 - `expo-app/components/SessionHistoryModal.tsx` - Session history browsing modal component
+- `expo-app/services/AnalyticsService.ts` - Analytics event tracking service
+- `expo-app/contexts/AnalyticsContext.tsx` - React context provider for analytics
+- `expo-app/components/AccountSettings.tsx` - User account settings component
+- `expo-app/components/AuthModal.tsx` - Login/Register authentication modal
+- `expo-app/lib/userService.ts` - User authentication and profile service
 
 #### Modified Files
 - `expo-app/app/(tabs)/sessions.tsx` - Integrated history modal, added handlers
+- `expo-app/app/(tabs)/settings.tsx` - Integrated account settings and analytics controls
+- `expo-app/lib/types.ts` - Added UserAccount, AuthTokens, and related types
+- `expo-app/lib/useStore.ts` - Added user authentication state and actions
+- `expo-app/lib/api.ts` - Exported apiClient for use in userService
 - `expo-app/index.tsx` - Added error handling to app entry point
 
 #### Features
