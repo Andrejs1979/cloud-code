@@ -7,6 +7,8 @@ import { useAppStore, RepositoryDetail } from '../../lib/useStore';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { ErrorIds } from '../../constants/errorIds';
 import { SessionHistoryModal, SessionListItem } from '../../components/SessionHistoryModal';
+import { OfflineBanner } from '../../components/OfflineBanner';
+import { OfflineQueue } from '../../components/OfflineQueue';
 
 // Request handling constants
 const REQUEST_TIMEOUT_MS = 30000; // 30 second timeout
@@ -1125,6 +1127,7 @@ function ChatScreenContent() {
   const [lastPrompt, setLastPrompt] = useState<string>('');
   const [canCancel, setCanCancel] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showOfflineQueueModal, setShowOfflineQueueModal] = useState(false);
   const [sessionHistory, setSessionHistory] = useState<SessionListItem[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -1698,6 +1701,9 @@ function ChatScreenContent() {
           </View>
         )}
 
+        {/* Offline banner */}
+        <OfflineBanner onSyncPress={() => setShowOfflineQueueModal(true)} />
+
         {messages.length === 0 ? (
           <View style={styles.emptyState} accessibilityRole="region" accessibilityLabel="Empty chat state">
             <Ionicons name="sparkles-outline" size={48} color={colors.mutedForeground} />
@@ -1824,6 +1830,18 @@ function ChatScreenContent() {
           onDeleteSession={handleDeleteSession}
           sessions={sessionHistory}
         />
+
+        {/* Offline queue modal */}
+        <Modal
+          visible={showOfflineQueueModal}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setShowOfflineQueueModal(false)}
+        >
+          <OfflineQueue
+            onDismiss={() => setShowOfflineQueueModal(false)}
+          />
+        </Modal>
       </View>
     </KeyboardAvoidingView>
   );
