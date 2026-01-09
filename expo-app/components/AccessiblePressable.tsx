@@ -40,7 +40,7 @@ import {
 
 export interface AccessiblePressableProps {
   /** Content to render inside the pressable */
-  children: React.ReactNode;
+  children: React.ReactNode | ((state: PressableStateCallbackType) => React.ReactNode);
   /** Primary accessibility label */
   accessibilityLabel: string;
   /** Additional hint for screen readers */
@@ -72,9 +72,7 @@ export interface AccessiblePressableProps {
     | 'tablist'
     | 'timer'
     | 'toolbar'
-    | 'grid'
-    | 'list'
-    | 'listitem';
+    | 'list';
   /** Accessibility state */
   accessibilityState?: AccessibilityState;
   /** Accessibility value (for sliders, progress bars, etc.) */

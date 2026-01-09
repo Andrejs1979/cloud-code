@@ -1,12 +1,19 @@
 // Expo Router entry point for native platforms
 import 'global';
-import { registerRootComponent } from 'expo-router/entry';
+
+// expo-router/entry is untyped - use require for untyped import
+const registerRootComponent = require('expo-router/entry').registerRootComponent as () => void;
+
 import { LogBox } from 'react-native';
 
 // Log any remaining warnings for debugging
-LogBox.addEventListener('warning', (warning) => {
-  console.warn('[ReactNative Warning]', warning);
-});
+// Note: LogBox doesn't have addEventListener, using console.warn instead
+if (__DEV__) {
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    originalWarn('[ReactNative Warning]', ...args);
+  };
+}
 
 // Wrap registration in error handler
 try {

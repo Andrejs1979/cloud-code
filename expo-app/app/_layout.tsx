@@ -17,8 +17,6 @@ export default function RootLayout() {
               screenOptions={{
                 headerShown: false,
                 contentStyle: { backgroundColor: '#09090b' },
-                // Disable link preview on web to avoid context error
-                disableLinkPreview: true,
               }}
             >
               <Stack.Screen name="(tabs)" />

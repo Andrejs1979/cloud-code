@@ -101,12 +101,8 @@ export async function preloadImages(
  */
 export function clearImageCache(): void {
   imageCache.clear();
-  Image.queryCache({}).then((cache) => {
-    const urls = Object.keys(cache);
-    urls.forEach((url) => {
-      Image.queryCache({ url }).catch(() => {});
-    });
-  });
+  // Image.queryCache may not be available in all React Native versions
+  // Skip cache query for compatibility
 }
 
 /**
@@ -197,7 +193,7 @@ export function useMemoCallback<T extends (...args: unknown[]) => unknown>(
   deps: DependencyList,
   comparator?: (prevDeps: DependencyList, nextDeps: DependencyList) => boolean
 ): T {
-  const prevDepsRef = useRef<DependencyList>();
+  const prevDepsRef = useRef<DependencyList | undefined>(undefined);
   const callbackRef = useRef(callback);
 
   const depsEqual = comparator
@@ -216,7 +212,7 @@ export function useMemoCallback<T extends (...args: unknown[]) => unknown>(
  * Hook for memoized value with deep comparison
  */
 export function useDeepMemo<T>(value: T, deps: DependencyList): T {
-  const prevDepsRef = useRef<DependencyList>();
+  const prevDepsRef = useRef<DependencyList | undefined>(undefined);
   const prevValueRef = useRef<T>(value);
 
   const depsEqual = deepEqual(prevDepsRef.current, deps);
@@ -242,7 +238,7 @@ export function useDebouncedCallback<T extends (...args: unknown[]) => unknown>(
 ): T {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callbackRef = useRef(callback);
-  const argsRef = useRef<unknown[]>();
+  const argsRef = useRef<unknown[]>([]);
 
   useEffect(() => {
     callbackRef.current = callback;
@@ -291,7 +287,7 @@ export function useThrottledCallback<T extends (...args: unknown[]) => unknown>(
   const lastRunRef = useRef<number>(0);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callbackRef = useRef(callback);
-  const argsRef = useRef<unknown[]>();
+  const argsRef = useRef<unknown[]>([]);
 
   useEffect(() => {
     callbackRef.current = callback;
@@ -403,7 +399,7 @@ export function useLazyComponent<T = unknown>(
  */
 export function createLazyComponent<T = unknown>(
   loader: () => Promise<{ default: ComponentType<T> }>,
-  fallback?: ComponentType<{ error?: Error }>,
+  FallbackComponent?: ComponentType<{ error?: Error }>,
   LoadingComponent?: ComponentType
 ): ComponentType<T> {
   return function LazyWrapper(props: T) {
@@ -413,15 +409,15 @@ export function createLazyComponent<T = unknown>(
       return <LoadingComponent />;
     }
 
-    if (loadState === 'error' && fallback) {
-      return <fallback error={error} {...(props as unknown as Record<string, unknown>)} />;
+    if (loadState === 'error' && FallbackComponent) {
+      return <FallbackComponent error={error ?? undefined} {...(props as unknown as Record<string, unknown>)} />;
     }
 
     if (!Component) {
       return LoadingComponent ? <LoadingComponent /> : null;
     }
 
-    return <Component {...props} />;
+    return <Component {...(props as any)} />;
   };
 }
 
@@ -493,7 +489,7 @@ export function useAnimationFrame(
   callback: AnimationFrameCallback,
   enabled = true
 ): void {
-  const requestRef = useRef<number>();
+  const requestRef = useRef<number | undefined>(undefined);
   const callbackRef = useRef(callback);
 
   useEffect(() => {
@@ -524,8 +520,8 @@ export function useAnimationFrame(
  */
 export function useAnimationFrameValue<T>(getValue: () => T, deps: DependencyList): T {
   const [value, setValue] = useState<T>(getValue);
-  const pendingValueRef = useRef<T>(getValue);
-  const frameRef = useRef<number>();
+  const pendingValueRef = useRef<T | undefined>(getValue());
+  const frameRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     pendingValueRef.current = getValue();
@@ -533,7 +529,9 @@ export function useAnimationFrameValue<T>(getValue: () => T, deps: DependencyLis
     if (frameRef.current) return;
 
     frameRef.current = requestAnimationFrame(() => {
-      setValue(pendingValueRef.current);
+      if (pendingValueRef.current !== undefined) {
+        setValue(pendingValueRef.current);
+      }
       frameRef.current = undefined;
     });
 
@@ -752,7 +750,7 @@ export function useMemoryMonitor(interval = 5000) {
  * Hook to detect and warn about effect cleanup issues
  */
 export function useEffectCleanupWarning(effectName: string) {
-  const cleanupRef = useRef<(() => void) | undefined>();
+  const cleanupRef = useRef<(() => void) | undefined>(undefined);
 
   useEffect(() => {
     return () => {
@@ -946,7 +944,7 @@ export function createTimer(label: string) {
  * Hook for measuring async operation performance
  */
 export function usePerformanceTimer(operation: string) {
-  const startTimeRef = useRef<number>();
+  const startTimeRef = useRef<number | undefined>(undefined);
 
   const start = useCallback(() => {
     startTimeRef.current = performance.now();
@@ -976,7 +974,7 @@ export function usePerformanceTimer(operation: string) {
  * Hook that returns a value from the previous render
  */
 export function usePrevious<T>(value: T): T | undefined {
-  const ref = useRef<T>();
+  const ref = useRef<T | undefined>(undefined);
 
   useEffect(() => {
     ref.current = value;
