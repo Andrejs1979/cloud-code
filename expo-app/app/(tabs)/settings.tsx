@@ -1,4 +1,4 @@
-// Cache bust: v4
+// Cache bust: v5
 import { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -32,6 +32,7 @@ import {
   quickAuthenticate,
 } from '../../lib/biometrics';
 import { useToast } from '../../lib/useToast';
+import { AnalyticsService } from '../../services/AnalyticsService';
 
 // App version - should be updated with releases
 const APP_VERSION = '2.1.0';
@@ -215,6 +216,8 @@ function SettingsScreenContent() {
   const [offlineModeEnabled, setOfflineModeEnabled] = useState(false);
   const [cacheSize, setCacheSize] = useState<string>('0 MB');
   const [isClearingCache, setIsClearingCache] = useState(false);
+  const [analyticsEnabled, setAnalyticsEnabled] = useState(AnalyticsService.isEnabled());
+  const [analyticsQueueSize, setAnalyticsQueueSize] = useState(AnalyticsService.getQueueSize());
 
   // Load settings on mount
   useEffect(() => {
@@ -226,6 +229,14 @@ function SettingsScreenContent() {
   // Update cache size periodically
   useEffect(() => {
     const interval = setInterval(updateCacheSize, 10000); // Update every 10s
+    return () => clearInterval(interval);
+  }, []);
+
+  // Update analytics queue size periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setAnalyticsQueueSize(AnalyticsService.getQueueSize());
+    }, 5000); // Update every 5s
     return () => clearInterval(interval);
   }, []);
 
@@ -352,6 +363,62 @@ function SettingsScreenContent() {
             } finally {
               setIsClearingCache(false);
             }
+          },
+        },
+      ]
+    );
+  };
+
+  // Analytics handlers
+  const handleAnalyticsToggle = (enabled: boolean) => {
+    haptics.toggle();
+    if (enabled) {
+      AnalyticsService.enable();
+      setAnalyticsEnabled(true);
+      toast.success('Analytics enabled. Thank you for helping us improve!');
+    } else {
+      Alert.alert(
+        'Disable Analytics',
+        'Disabling analytics means we won\'t be able to track usage data to improve the app. Continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Disable',
+            style: 'destructive',
+            onPress: () => {
+              AnalyticsService.disable();
+              setAnalyticsEnabled(false);
+              setAnalyticsQueueSize(0);
+              toast.success('Analytics disabled');
+            },
+          },
+        ]
+      );
+    }
+  };
+
+  const handleExportAnalytics = () => {
+    haptics.buttonPress();
+    const data = AnalyticsService.exportData();
+    console.log('[Analytics] Exported data:', data);
+    toast.success('Analytics data exported to console');
+  };
+
+  const handleResetAnalytics = () => {
+    haptics.warning();
+    Alert.alert(
+      'Reset Analytics',
+      'This will delete all analytics data and reset your install ID. This action cannot be undone. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: () => {
+            AnalyticsService.reset();
+            setAnalyticsEnabled(false);
+            setAnalyticsQueueSize(0);
+            toast.success('Analytics data reset');
           },
         },
       ]
@@ -591,6 +658,54 @@ function SettingsScreenContent() {
             style={{ borderColor: colors.error }}
             fullWidth
           />
+        </View>
+
+        {/* Analytics */}
+        <Text style={styles.sectionTitle}>Analytics</Text>
+        <View style={styles.card}>
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingLabel}>Usage Analytics</Text>
+              <Text style={styles.settingDescription}>
+                Help us improve by sharing anonymous usage data
+              </Text>
+            </View>
+            <Toggle
+              value={analyticsEnabled}
+              onValueChange={handleAnalyticsToggle}
+              accessibilityLabel="Toggle analytics"
+              variant="primary"
+            />
+          </View>
+          {analyticsEnabled && (
+            <>
+              <View style={styles.settingRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.settingLabel}>Queue Status</Text>
+                  <Text style={styles.settingDescription}>
+                    {analyticsQueueSize} event{analyticsQueueSize !== 1 ? 's' : ''} pending
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.row, { gap: spacing[2] }]}>
+                <Button
+                  label="Export"
+                  icon={<Ionicons name="download-outline" size={16} color="currentColor" />}
+                  variant="outline"
+                  size="sm"
+                  onPress={handleExportAnalytics}
+                />
+                <Button
+                  label="Reset"
+                  icon={<Ionicons name="refresh-outline" size={16} color={colors.error} />}
+                  variant="outline"
+                  size="sm"
+                  onPress={handleResetAnalytics}
+                  style={{ borderColor: colors.error }}
+                />
+              </View>
+            </>
+          )}
         </View>
 
         {/* Account Information */}
