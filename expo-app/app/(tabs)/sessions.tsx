@@ -1,12 +1,16 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, KeyboardAvoidingView, ActivityIndicator, Platform, Modal, Animated } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, KeyboardAvoidingView, ActivityIndicator, Platform, Modal, Animated, Linking } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../lib/styles';
 import { useAppStore, RepositoryDetail } from '../../lib/useStore';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
+import { ErrorIds } from '../../constants/errorIds';
 
-// Constants for request handling
+// Request handling constants
 const REQUEST_TIMEOUT_MS = 30000; // 30 second timeout
+
+// Session storage constants
 const MAX_SESSION_STORAGE_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 const SESSION_STORAGE_KEY = 'claude_chat_sessions';
 const CURRENT_SESSION_KEY = 'claude_chat_current';
@@ -23,11 +27,13 @@ interface ChatMessage {
     repository?: string;
     prNumber?: number;
   };
+  errorId?: string; // Error ID for tracking
 }
 
 // Session storage type
 interface ChatSession {
   id: string;
+  title: string; // First user message or "New Chat"
   messages: Omit<ChatMessage, 'isStreaming'>[];
   sessionId: string | null;
   selectedRepos: string[];
@@ -35,13 +41,40 @@ interface ChatSession {
   updatedAt: number;
 }
 
-// LocalStorage helpers for web platform
+interface SessionListItem {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messageCount: number;
+  tokenCount: number;
+}
+
+/**
+ * Structured logging utility for error tracking
+ */
+const logError = (errorId: string, error: unknown, context?: Record<string, unknown>) => {
+  console.error(`[${errorId}]`, error, context ? { context } : '');
+};
+
+const logForDebugging = (message: string, data?: unknown) => {
+  if (__DEV__) {
+    console.log('[DEBUG]', message, data);
+  }
+};
+
+// LocalStorage helpers for web platform with proper error handling
 const storage = {
   getItem: (key: string): string | null => {
     if (typeof window === 'undefined') return null;
     try {
       return localStorage.getItem(key);
-    } catch {
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+        logError(ErrorIds.STORAGE_QUOTA_EXCEEDED, error, { key, operation: 'getItem' });
+      } else {
+        logError(ErrorIds.STORAGE_GET_ITEM, error, { key });
+      }
       return null;
     }
   },
@@ -50,7 +83,12 @@ const storage = {
     try {
       localStorage.setItem(key, value);
       return true;
-    } catch {
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+        logError(ErrorIds.STORAGE_QUOTA_EXCEEDED, error, { key, operation: 'setItem', valueLength: value.length });
+      } else {
+        logError(ErrorIds.STORAGE_SET_ITEM, error, { key });
+      }
       return false;
     }
   },
@@ -58,14 +96,31 @@ const storage = {
     if (typeof window === 'undefined') return;
     try {
       localStorage.removeItem(key);
-    } catch {}
+    } catch (error) {
+      logError(ErrorIds.STORAGE_REMOVE_ITEM, error, { key });
+    }
   },
 };
 
-// Session persistence helpers
+const generateSessionTitle = (messages: ChatMessage[]): string => {
+  const firstUserMessage = messages.find(m => m.role === 'user');
+  if (!firstUserMessage) return 'New Chat';
+  const content = firstUserMessage.content;
+  return content.length > 50 ? content.slice(0, 47) + '...' : content;
+};
+
+// Generate a persistent session ID for the current session
+let currentSessionId: string | null = null;
+
 const saveCurrentSession = (messages: ChatMessage[], sessionId: string | null, selectedRepos: string[]) => {
+  // Use a persistent ID for the current session to avoid duplicate history entries
+  if (!currentSessionId) {
+    currentSessionId = `session_${Date.now()}`;
+  }
+
   const session: ChatSession = {
-    id: 'current',
+    id: currentSessionId,
+    title: generateSessionTitle(messages),
     messages: messages.map(({ isStreaming, ...msg }) => msg),
     sessionId,
     selectedRepos,
@@ -73,6 +128,50 @@ const saveCurrentSession = (messages: ChatMessage[], sessionId: string | null, s
     updatedAt: Date.now(),
   };
   storage.setItem(CURRENT_SESSION_KEY, JSON.stringify(session));
+
+  // Also save to session history if it has messages
+  if (messages.length > 0) {
+    saveSessionToHistory(session);
+  }
+};
+
+const saveSessionToHistory = (session: ChatSession) => {
+  const historyData = storage.getItem(SESSION_STORAGE_KEY);
+  let history: ChatSession[] = [];
+
+  try {
+    history = historyData ? JSON.parse(historyData) : [];
+  } catch (error) {
+    logError(ErrorIds.STORAGE_PARSE_FAILED, error, { context: 'saveSessionToHistory' });
+    // Backup corrupted data for potential recovery
+    try {
+      if (historyData) {
+        localStorage.setItem('claude_chat_sessions_corrupted_backup', historyData);
+        logForDebugging('Corrupted session data backed up for recovery');
+      }
+    } catch (backupError) {
+      logError(ErrorIds.STORAGE_SET_ITEM, backupError, { context: 'backup_corrupted_data' });
+    }
+    history = [];
+  }
+
+  // Remove old sessions that are too old
+  const now = Date.now();
+  history = history.filter(s => now - s.updatedAt <= MAX_SESSION_STORAGE_AGE_MS);
+
+  // Find if session with this ID already exists (using the persistent ID)
+  const existingIdx = history.findIndex(s => s.id === session.id);
+
+  if (existingIdx >= 0) {
+    history[existingIdx] = session;
+  } else {
+    history.unshift(session);
+  }
+
+  // Keep only the last 50 sessions
+  history = history.slice(0, 50);
+
+  storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(history));
 };
 
 const loadCurrentSession = (): ChatSession | null => {
@@ -83,17 +182,90 @@ const loadCurrentSession = (): ChatSession | null => {
     const session = JSON.parse(data) as ChatSession;
     // Check if session is too old
     if (Date.now() - session.updatedAt > MAX_SESSION_STORAGE_AGE_MS) {
+      logForDebugging('Current session expired, clearing', { sessionId: session.id });
       storage.removeItem(CURRENT_SESSION_KEY);
       return null;
     }
+    // Restore the persistent session ID
+    currentSessionId = session.id;
     return session;
-  } catch {
+  } catch (error) {
+    logError(ErrorIds.SESSION_LOAD_FAILED, error, { context: 'loadCurrentSession' });
     return null;
   }
 };
 
 const clearCurrentSession = () => {
+  currentSessionId = null; // Reset persistent session ID
   storage.removeItem(CURRENT_SESSION_KEY);
+};
+
+const getSessionHistory = (): SessionListItem[] => {
+  const historyData = storage.getItem(SESSION_STORAGE_KEY);
+  if (!historyData) return [];
+
+  try {
+    const sessions: ChatSession[] = JSON.parse(historyData);
+    const now = Date.now();
+
+    return sessions
+      .filter(s => now - s.updatedAt <= MAX_SESSION_STORAGE_AGE_MS)
+      .map(s => ({
+        id: s.id,
+        title: s.title || 'New Chat',
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        messageCount: s.messages.length,
+        tokenCount: s.messages.reduce((sum, m) => sum + estimateTokens(m.content), 0),
+      }))
+      .sort((a, b) => b.updatedAt - a.updatedAt); // Most recent first
+  } catch {
+    return [];
+  }
+};
+
+const loadSessionFromHistory = (sessionId: string): ChatSession | null => {
+  const historyData = storage.getItem(SESSION_STORAGE_KEY);
+  if (!historyData) return null;
+
+  try {
+    const sessions: ChatSession[] = JSON.parse(historyData);
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session) {
+      logForDebugging('Session not found in history', { sessionId });
+      return null;
+    }
+
+    // Check if session is too old
+    const age = Date.now() - session.updatedAt;
+    if (age > MAX_SESSION_STORAGE_AGE_MS) {
+      logForDebugging('Session expired', { sessionId, age });
+      return null;
+    }
+
+    return session;
+  } catch (error) {
+    logError(ErrorIds.SESSION_LOAD_FAILED, error, { context: 'loadSessionFromHistory', sessionId });
+    return null;
+  }
+};
+
+const deleteSessionFromHistory = (sessionId: string): boolean => {
+  const historyData = storage.getItem(SESSION_STORAGE_KEY);
+  if (!historyData) return false;
+
+  try {
+    const sessions: ChatSession[] = JSON.parse(historyData);
+    const filtered = sessions.filter(s => s.id !== sessionId);
+    return storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(filtered));
+  } catch (error) {
+    logError(ErrorIds.SESSION_DELETE_FAILED, error, { sessionId });
+    return false;
+  }
+};
+
+const clearAllHistory = (): void => {
+  storage.removeItem(SESSION_STORAGE_KEY);
 };
 
 // Language display name mapping for better code block labels
@@ -196,17 +368,16 @@ function getLanguageDisplayName(lang: string): string {
   return LANGUAGE_DISPLAY_NAMES[normalized] || lang;
 }
 
-// Simple token estimation (roughly 1 token ≈ 4 characters for English text)
+// Simple token estimation using max(word count, char count / 4)
+// Rough approximation: 1 token ≈ 4 characters for English text
 function estimateTokens(text: string): number {
   if (!text) return 0;
-  // Count words and characters
   const words = text.split(/\s+/).filter(w => w.length > 0).length;
   const chars = text.length;
-  // Rough estimate: tokens ≈ max(words, chars / 4)
   return Math.max(words, Math.ceil(chars / 4));
 }
 
-// Parse markdown for code blocks
+// Parse markdown for code blocks and PR references
 function parseMarkdown(text: string): Array<{ type: 'text' | 'code' | 'pr'; content: string; language?: string; prNumber?: number; prUrl?: string }> {
   const parts: Array<{ type: 'text' | 'code' | 'pr'; content: string; language?: string; prNumber?: number; prUrl?: string }> = [];
 
@@ -275,11 +446,19 @@ function CodeBlock({ content, language, onCopy }: { content: string; language: s
 
 // PR reference component
 function PRReference({ prNumber, prUrl }: { prNumber: number; prUrl: string }) {
+  const handlePress = useCallback(() => {
+    if (Platform.OS === 'web') {
+      window.open(prUrl, '_blank');
+    } else {
+      Linking.openURL(prUrl);
+    }
+  }, [prUrl]);
+
   return (
     <View style={styles.prContainer}>
       <Ionicons name="git-pull-request" size={16} color={colors.brand} />
       <Text style={styles.prText}>Pull request #{prNumber} created</Text>
-      <Pressable onPress={() => window.open(prUrl, '_blank')} style={styles.prLink}>
+      <Pressable onPress={handlePress} style={styles.prLink}>
         <Text style={styles.prLinkText}>View PR</Text>
         <Ionicons name="open-outline" size={14} color={colors.brand} />
       </Pressable>
@@ -945,13 +1124,12 @@ function ChatScreenContent() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Calculate total tokens used in the session
+  // Calculate total tokens used in the session (excludes system messages)
+  // Note: This is an approximation using character estimation, not actual API token usage
   const totalTokens = useMemo(() => {
-    return messages.reduce((sum, msg) => {
-      // Count input tokens (user messages) and output tokens (assistant messages)
-      // For simplicity, we count both equally
-      return sum + estimateTokens(msg.content);
-    }, 0);
+    return messages
+      .filter(msg => msg.role !== 'system') // Exclude system status messages
+      .reduce((sum, msg) => sum + estimateTokens(msg.content), 0);
   }, [messages]);
 
   // Load saved session on mount
@@ -972,6 +1150,7 @@ function ChatScreenContent() {
     }
   }, [messages, sessionId, selectedRepos]);
 
+  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => {
@@ -993,8 +1172,16 @@ function ChatScreenContent() {
   }, []);
 
   const copyToClipboard = useCallback(async (content: string) => {
-    if (Platform.OS === 'web') {
-      await navigator.clipboard.writeText(content);
+    try {
+      if (Platform.OS === 'web') {
+        await navigator.clipboard.writeText(content);
+      } else {
+        await Clipboard.setStringAsync(content);
+      }
+    } catch (error) {
+      logError(ErrorIds.CLIPBOARD_WRITE_FAILED, error, { contentLength: content.length });
+      // Show user feedback about the failure
+      alert('Failed to copy to clipboard. Please try again.');
     }
   }, []);
 
@@ -1004,7 +1191,7 @@ function ChatScreenContent() {
     setLastPrompt('');
     setInputText('');
     setSelectedRepos([]);
-    clearCurrentSession();
+    clearCurrentSession(); // This also resets currentSessionId
   }, []);
 
   const cancelRequest = useCallback(() => {
@@ -1172,27 +1359,36 @@ function ChatScreenContent() {
         timeoutRef.current = null;
       }
 
-      // Check if error was due to abort (user cancellation or timeout)
-      if (error instanceof Error && error.name === 'AbortError') {
-        // If it's a timeout, we already handled it above
-        // If it's user cancellation, we don't need to show an error
-        if (!canCancel) {
-          // Request was cancelled, already handled
-          return;
+      // Handle different error types with specific messages
+      let errorMessage = 'Something went wrong. Please try again.';
+      let errorId = ErrorIds.CHAT_SEND_UNKNOWN;
+
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          // User cancelled or timeout
+          if (!canCancel) {
+            // This was a timeout (handled above) or user cancelled via cancelRequest
+            return;
+          }
+          // Otherwise it was a user-initiated cancellation
+          errorMessage = `Request timed out after ${REQUEST_TIMEOUT_MS / 1000} seconds. Please check your connection and try again.`;
+          errorId = ErrorIds.CHAT_SEND_TIMEOUT;
+        } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
+          errorId = ErrorIds.CHAT_SEND_NETWORK;
+        } else if (error.message.includes('401') || error.message.includes('403')) {
+          errorMessage = 'Authentication error. Please refresh and try again.';
+          errorId = ErrorIds.CHAT_SEND_AUTH;
+        } else if (error.message.includes('429')) {
+          errorMessage = 'Too many requests. Please wait a moment and try again.';
+          errorId = ErrorIds.CHAT_SEND_RATE_LIMIT;
+        } else {
+          errorMessage = error.message;
+          errorId = ErrorIds.CHAT_SEND_SERVER;
         }
       }
 
-      console.error('Error sending message:', error);
-      let errorMessage = 'Something went wrong. Please try again.';
-      if (error instanceof Error) {
-        if (error.message.includes('Failed to fetch')) {
-          errorMessage = 'Network error. Please check your connection and try again.';
-        } else if (error.message.includes('timeout')) {
-          errorMessage = 'Request timed out. Please try again.';
-        } else {
-          errorMessage = error.message;
-        }
-      }
+      logError(errorId, error);
 
       const errorMsg: ChatMessage = {
         id: Date.now().toString(),
@@ -1200,6 +1396,7 @@ function ChatScreenContent() {
         content: errorMessage,
         timestamp: Date.now(),
         error: true,
+        errorId,
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
@@ -1334,7 +1531,14 @@ function ChatScreenContent() {
                 );
               }
             } catch (e) {
-              // Ignore JSON parse errors for incomplete chunks
+              // Only ignore if it looks like an incomplete chunk (doesn't end with })
+              const isLikelyIncomplete = !data.trim().endsWith('}');
+
+              if (!isLikelyIncomplete) {
+                // This is a real parse error, not just an incomplete chunk
+                logError(ErrorIds.SSE_PARSE_ERROR, e, { data, eventType: currentEventType });
+              }
+              // Continue - incomplete chunks are expected during SSE streaming
             }
           }
         }
