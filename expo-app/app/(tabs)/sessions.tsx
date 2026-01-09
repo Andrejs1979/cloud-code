@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, KeyboardAvoidingView, ActivityIndicator, Platform, Modal, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../lib/styles';
@@ -196,6 +196,16 @@ function getLanguageDisplayName(lang: string): string {
   return LANGUAGE_DISPLAY_NAMES[normalized] || lang;
 }
 
+// Simple token estimation (roughly 1 token ≈ 4 characters for English text)
+function estimateTokens(text: string): number {
+  if (!text) return 0;
+  // Count words and characters
+  const words = text.split(/\s+/).filter(w => w.length > 0).length;
+  const chars = text.length;
+  // Rough estimate: tokens ≈ max(words, chars / 4)
+  return Math.max(words, Math.ceil(chars / 4));
+}
+
 // Parse markdown for code blocks
 function parseMarkdown(text: string): Array<{ type: 'text' | 'code' | 'pr'; content: string; language?: string; prNumber?: number; prUrl?: string }> {
   const parts: Array<{ type: 'text' | 'code' | 'pr'; content: string; language?: string; prNumber?: number; prUrl?: string }> = [];
@@ -354,6 +364,15 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: colors.foreground,
+  },
+  tokenCounter: {
+    fontSize: 11,
+    color: colors.mutedForeground,
+    marginLeft: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: colors.muted,
+    borderRadius: 10,
   },
   newChatButton: {
     padding: 4,
@@ -926,6 +945,15 @@ function ChatScreenContent() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Calculate total tokens used in the session
+  const totalTokens = useMemo(() => {
+    return messages.reduce((sum, msg) => {
+      // Count input tokens (user messages) and output tokens (assistant messages)
+      // For simplicity, we count both equally
+      return sum + estimateTokens(msg.content);
+    }, 0);
+  }, [messages]);
+
   // Load saved session on mount
   useEffect(() => {
     const savedSession = loadCurrentSession();
@@ -1346,19 +1374,37 @@ function ChatScreenContent() {
 
   return (
     <KeyboardAvoidingView style={styles.flex1} behavior="padding" keyboardVerticalOffset={0}>
-      <View style={styles.flex1}>
-        <View style={styles.header}>
+      <View style={styles.flex1} accessibilityRole="region" accessibilityLabel="Chat screen">
+        <View style={styles.header} accessibilityRole="header">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             {messages.length > 0 && (
-              <Pressable onPress={startNewChat} style={styles.newChatButton}>
+              <Pressable
+                onPress={startNewChat}
+                style={styles.newChatButton}
+                accessibilityLabel="Start new chat"
+                accessibilityHint="Clears current conversation and starts a new one"
+                accessibilityRole="button"
+              >
                 <Ionicons name="add-circle-outline" size={24} color={colors.brand} />
               </Pressable>
             )}
             <Text style={styles.title}>Chat</Text>
+            {totalTokens > 0 && (
+              <Text
+                style={styles.tokenCounter}
+                accessibilityLabel={`Session tokens used: ${totalTokens}`}
+                accessibilityRole="text"
+              >
+                {totalTokens >= 1000 ? `${(totalTokens / 1000).toFixed(1)}k` : totalTokens} tokens
+              </Text>
+            )}
           </View>
           <Pressable
             style={styles.repoSelector}
             onPress={() => setShowRepoModal(true)}
+            accessibilityLabel={`Select repositories${selectedRepos.length > 0 ? `. ${selectedRepos.length} selected` : ''}`}
+            accessibilityHint="Open repository selection modal"
+            accessibilityRole="button"
           >
             <Ionicons name="git-branch" size={16} color={selectedRepos.length > 0 ? colors.foreground : colors.mutedForeground} />
             <Text style={[styles.repoText, selectedRepos.length === 0 && styles.repoTextPlaceholder]}>
@@ -1373,11 +1419,19 @@ function ChatScreenContent() {
 
         {/* Selected repos chips when multiple selected */}
         {selectedRepos.length > 1 && (
-          <View style={styles.selectedRepos}>
-            {selectedRepos.slice(0, 3).map(repo => (
-              <View key={repo} style={styles.selectedRepoChip}>
+          <View
+            style={styles.selectedRepos}
+            accessibilityLabel={`Selected repositories: ${selectedRepos.join(', ')}`}
+            accessibilityRole="text"
+          >
+            {selectedRepos.slice(0, 3).map((repo, index) => (
+              <View key={repo} style={styles.selectedRepoChip} importantForAccessibility="no">
                 <Text style={styles.selectedRepoText}>{repo.split('/')[1]}</Text>
-                <Pressable onPress={() => removeRepo(repo)}>
+                <Pressable
+                  onPress={() => removeRepo(repo)}
+                  accessibilityLabel={`Remove ${repo} from selection`}
+                  accessibilityRole="button"
+                >
                   <Ionicons name="close-circle" size={14} color={colors.brand} />
                 </Pressable>
               </View>
@@ -1389,7 +1443,7 @@ function ChatScreenContent() {
         )}
 
         {messages.length === 0 ? (
-          <View style={styles.emptyState}>
+          <View style={styles.emptyState} accessibilityRole="region" accessibilityLabel="Empty chat state">
             <Ionicons name="sparkles-outline" size={48} color={colors.mutedForeground} />
             <Text style={styles.emptyTitle}>Start a conversation</Text>
             <Text style={styles.emptySubtitle}>
@@ -1405,6 +1459,9 @@ function ChatScreenContent() {
                   key={action}
                   style={styles.quickActionButton}
                   onPress={() => sendMessage(action)}
+                  accessibilityLabel={`Quick action: ${action}`}
+                  accessibilityHint="Sends this prompt to Claude"
+                  accessibilityRole="button"
                 >
                   <Text style={styles.quickActionText}>{action}</Text>
                 </Pressable>
@@ -1416,17 +1473,29 @@ function ChatScreenContent() {
             ref={scrollViewRef}
             style={styles.chatContainer}
             contentContainerStyle={styles.messagesList}
+            accessibilityLabel="Chat messages"
+            accessibilityRole="region"
           >
-            {messages.map((message) => (
-              <Message
+            {messages.map((message, index) => (
+              <View
                 key={message.id}
-                message={message}
-                onCopy={copyToClipboard}
-                onRetry={message.error ? retryLastMessage : undefined}
-              />
+                accessibilityLabel={`${message.role === 'user' ? 'You' : 'Claude'}: ${message.content.slice(0, 100)}${message.content.length > 100 ? '...' : ''}`}
+                accessibilityRole="text"
+              >
+                <Message
+                  key={message.id}
+                  message={message}
+                  onCopy={copyToClipboard}
+                  onRetry={message.error ? retryLastMessage : undefined}
+                />
+              </View>
             ))}
             {isProcessing && (
-              <View style={styles.messageRow}>
+              <View
+                style={styles.messageRow}
+                accessibilityLabel="Claude is typing"
+                accessibilityRole="status"
+              >
                 <View style={[styles.messageBubble, styles.assistantBubble]}>
                   <View style={styles.typingIndicator}>
                     <View style={styles.typingDot} />
