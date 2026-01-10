@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, Alert, TextInput } from 'react-native';
 import { useAppStore } from '../../lib/useStore';
 import { Badge } from '../../components/Badge';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { CreateIssueModal } from '../../components/CreateIssueModal';
 import { PRDetailModal } from '../../components/PRDetailModal';
+import { IssueDetailModal } from '../../components/IssueDetailModal';
 import { SwipeableItem } from '../../components/SwipeableItem';
 import { PullToRefresh } from '../../components/PullToRefresh';
 import { colors } from '../../lib/styles';
@@ -12,6 +13,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { haptics } from '../../lib/haptics';
 
 const FILTERS = ['All', 'Open', 'Processing', 'Completed'] as const;
+
+interface SelectedIssue {
+  number: number;
+  repository: string;
+  isPR?: boolean;
+}
 
 interface SelectedPR {
   number: number;
@@ -56,6 +63,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    height: 40,
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: colors.foreground,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  searchInputFocused: {
+    borderColor: colors.brand,
+  },
+  clearButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     paddingHorizontal: 16,
@@ -155,16 +191,31 @@ function IssuesScreenContent() {
 
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [selectedPR, setSelectedPR] = useState<SelectedPR | null>(null);
+  const [selectedIssue, setSelectedIssue] = useState<SelectedIssue | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
 
   useEffect(() => {
     refresh();
   }, []);
 
   const filteredIssues = issues.filter((issue) => {
-    if (selectedIssueFilter === 'All') return true;
+    // Filter by status
     if (selectedIssueFilter === 'Open') return issue.state === 'open';
     if (selectedIssueFilter === 'Processing') return issue.status === 'processing';
     if (selectedIssueFilter === 'Completed') return issue.status === 'completed';
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      return (
+        issue.title.toLowerCase().includes(query) ||
+        (issue.body && issue.body.toLowerCase().includes(query)) ||
+        `#${issue.number}`.includes(query) ||
+        (issue.repository && issue.repository.toLowerCase().includes(query))
+      );
+    }
+
     return true;
   });
 
@@ -182,16 +233,20 @@ function IssuesScreenContent() {
     await refresh();
   }, [refresh]);
 
-  const handleViewPR = useCallback((prNumber: number, repository: string) => {
+  const handleViewPR = useCallback((prNumber: number, repository: string, isPR?: boolean) => {
     haptics.buttonPress();
-    setSelectedPR({ number: prNumber, repository });
+    if (isPR) {
+      setSelectedPR({ number: prNumber, repository });
+    } else {
+      setSelectedIssue({ number: prNumber, repository, isPR: false });
+    }
   }, []);
 
   const handleSwipeAction = useCallback((issue: any, action: string) => {
     haptics.modalOpen();
     if (action === 'view') {
       // Navigate to issue details or PR details
-      handleViewPR(issue.number, issue.repository || '');
+      handleViewPR(issue.number, issue.repository || '', issue.isPR);
     } else if (action === 'delete') {
       Alert.alert(
         'Delete Issue',
@@ -221,6 +276,36 @@ function IssuesScreenContent() {
             <Pressable style={styles.headerButton} onPress={handleCreateIssue}>
               <Ionicons name="add" size={24} color="#fff" />
             </Pressable>
+          </View>
+
+          {/* Search Bar */}
+          <View style={styles.searchRow}>
+            <Ionicons
+              name="search"
+              size={20}
+              color={searchFocused ? colors.brand : colors.mutedForeground}
+              style={{ marginLeft: 4 }}
+            />
+            <TextInput
+              style={[styles.searchInput, searchFocused && styles.searchInputFocused]}
+              placeholder="Search issues..."
+              placeholderTextColor={colors.mutedForeground}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+            />
+            {searchQuery.length > 0 && (
+              <Pressable
+                style={styles.clearButton}
+                onPress={() => {
+                  haptics.buttonPress();
+                  setSearchQuery('');
+                }}
+              >
+                <Ionicons name="close" size={18} color={colors.foreground} />
+              </Pressable>
+            )}
           </View>
 
           {/* Filter Tabs */}
@@ -342,6 +427,16 @@ function IssuesScreenContent() {
           onClose={() => setSelectedPR(null)}
           prNumber={selectedPR.number}
           repository={selectedPR.repository}
+        />
+      )}
+
+      {/* Issue Detail Modal */}
+      {selectedIssue && (
+        <IssueDetailModal
+          visible={!!selectedIssue}
+          onClose={() => setSelectedIssue(null)}
+          issueNumber={selectedIssue.number}
+          repository={selectedIssue.repository}
         />
       )}
     </>
